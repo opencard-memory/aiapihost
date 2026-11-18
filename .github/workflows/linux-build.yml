@@ -1,0 +1,116 @@
+name: AIChatConsole Linux Build
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - 'MacOS/AIChatConsole-mac/**'
+      - '.github/workflows/linux-build.yml'
+    tags: ['v*']
+
+permissions:
+  contents: write
+
+jobs:
+  build-linux:
+    name: Linux \${{ matrix.rid }} packages
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: ubuntu-24.04
+            rid: linux-x64
+            goarch: amd64
+          - runner: ubuntu-24.04-arm
+            rid: linux-arm64
+            goarch: arm64
+    runs-on: \${{ matrix.runner }}
+    steps:
+      - uses: actions/checkout@v4
+        name: Checkout Repository
+
+      - name: Pin .NET 10 SDK
+        run: |
+          cat > MacOS/AIChatConsole-mac/global.json <<'EOF'
+          {
+            "sdk": {
+              "version": "10.0.100",
+              "rollForward": "latestFeature",
+              "allowPrerelease": false
+            }
+          }
+          EOF
+
+      - uses: actions/setup-dotnet@v4
+        name: Setup .NET 10
+        with:
+          dotnet-version: '10.0.x'
+          global-json-file: MacOS/AIChatConsole-mac/global.json
+
+      - uses: actions/setup-go@v5
+        name: Setup Go
+        with:
+          go-version: '1.24.x'
+
+      - name: Install nfpm
+        run: |
+          go install github.com/goreleaser/nfpm/v2/cmd/nfpm@latest
+          echo "$(go env GOPATH)/bin" >> "$GITHUB_PATH"
+
+      - name: Verify Toolchain
+        working-directory: MacOS/AIChatConsole-mac
+        run: |
+          dotnet --version
+          go version
+          nfpm --version
+          uname -m
+
+      - name: Restore NuGet Packages
+        working-directory: MacOS/AIChatConsole-mac
+        run: dotnet restore AIChatConsole.csproj
+
+      - name: Build and Package Linux GUI
+        working-directory: MacOS/AIChatConsole-mac
+        env:
+          VERSION: \${{ startsWith(github.ref, 'refs/tags/v') && github.ref_name || '1.0.0' }}
+        run: |
+          chmod +x build-linux.sh
+          ./build-linux.sh "\${{ matrix.rid }}" "\${{ matrix.goarch }}"
+
+      - name: Verify Linux Packages
+        working-directory: MacOS/AIChatConsole-mac
+        run: |
+          set -e
+          test -n "$(find dist-linux/packages -maxdepth 1 -name '*.deb' -print -quit)"
+          test -n "$(find dist-linux/packages -maxdepth 1 -name '*.rpm' -print -quit)"
+          test -n "$(find dist-linux/packages -maxdepth 1 -name '*.pkg.tar.zst' -print -quit)"
+          test -s "dist-linux/packages/AIChatConsole-\${{ matrix.rid }}-self-contained.tar.gz"
+          ls -lh dist-linux/packages/
+
+      - uses: actions/upload-artifact@v4
+        name: Upload Linux Packages
+        with:
+          name: AIChatConsole-Linux-\${{ matrix.rid }}
+          path: MacOS/AIChatConsole-mac/dist-linux/packages/*
+          if-no-files-found: error
+          retention-days: 30
+
+  publish-release:
+    name: Publish Linux Release Assets
+    needs: build-linux
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/download-artifact@v4
+        name: Download Linux Artifacts
+        with:
+          pattern: AIChatConsole-Linux-*
+          path: release-assets
+          merge-multiple: true
+
+      - name: Publish GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: release-assets/*
+          generate_release_notes: true
