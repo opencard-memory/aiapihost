@@ -6,7 +6,7 @@ PROJECT="$ROOT_DIR/AIChatConsole.csproj"
 DIST="$ROOT_DIR/dist-linux"
 RID="$1"
 GOARCH="$2"
-VERSION="\${VERSION:-1.0.0}"
+VERSION="${VERSION:-1.0.0}"
 
 case "$RID:$GOARCH" in
   linux-x64:amd64|linux-arm64:arm64) ;;
@@ -46,9 +46,9 @@ chmod 0644 "$DIST/staging/usr/share/applications/aichatconsole.desktop"
 export GOARCH VERSION
 cat > "$DIST/nfpm.yaml" <<'NFPM'
 name: aichatconsole
-arch: \${GOARCH}
+arch: ${GOARCH}
 platform: linux
-version: \${VERSION}
+version: ${VERSION}
 section: utils
 priority: optional
 maintainer: OpenCard Memory
