@@ -1,0 +1,91 @@
+
+name: AIChatConsole macOS Build
+
+on:
+  workflow_dispatch:
+
+  push:
+    branches:
+      - main
+    paths:
+      - 'MacOS/AIChatConsole-mac/**'
+      - '.github/workflows/macos-build.yml'
+
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write
+
+jobs:
+  build-macos:
+    name: Build macOS Self-contained Apps
+    runs-on: macos-26
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Setup .NET 10 SDK
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+
+      - name: Display Build Environment
+        run: |
+          echo "=== macOS Environment ==="
+          sw_vers
+          echo "=== Architecture ==="
+          uname -m
+          echo "=== .NET SDK ==="
+          dotnet --info
+
+      - name: Restore Dependencies
+        working-directory: MacOS/AIChatConsole-mac
+        run: |
+          dotnet restore AIChatConsole.csproj
+
+      - name: Build Self-contained Apps
+        working-directory: MacOS/AIChatConsole-mac
+        run: |
+          chmod +x build.sh
+          chmod +x build-self-contained.sh
+          ./build.sh
+
+      - name: Verify Build Outputs
+        run: |
+          set -e
+
+          DIST="MacOS/AIChatConsole-mac/dist-self-contained"
+
+          test -f "$DIST/AIChatConsole-osx-arm64-self-contained.zip"
+          test -f "$DIST/AIChatConsole-osx-x64-self-contained.zip"
+
+          echo "Both macOS packages were generated successfully."
+
+          ls -lh "$DIST"/*.zip
+
+      - name: Upload Apple Silicon Build
+        uses: actions/upload-artifact@v4
+        with:
+          name: AIChatConsole-macOS-Apple-Silicon-arm64
+          path: MacOS/AIChatConsole-mac/dist-self-contained/AIChatConsole-osx-arm64-self-contained.zip
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: Upload Intel Build
+        uses: actions/upload-artifact@v4
+        with:
+          name: AIChatConsole-macOS-Intel-x64
+          path: MacOS/AIChatConsole-mac/dist-self-contained/AIChatConsole-osx-x64-self-contained.zip
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: Publish GitHub Release
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            MacOS/AIChatConsole-mac/dist-self-contained/AIChatConsole-osx-arm64-self-contained.zip
+            MacOS/AIChatConsole-mac/dist-self-contained/AIChatConsole-osx-x64-self-contained.zip
+          generate_release_notes: true
