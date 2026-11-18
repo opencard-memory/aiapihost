@@ -1,0 +1,27 @@
+name: Unzip Source File
+
+on:
+  workflow_dispatch: # 수동 실행 버튼 활성화
+
+permissions:
+  contents: write # 저장소에 압축 푼 파일을 다시 올리기 위한 쓰기 권한
+
+jobs:
+  unzip:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Unzip AIChatConsole-source.zip
+        run: |
+          unzip -o Windows/AIChatConsole-source.zip -d Windows/
+          rm Windows/AIChatConsole-source.zip # (선택사항) 압축 해제 후 기존 zip 파일 삭제. 남기고 싶으면 이 줄 지워!
+
+      - name: Commit and push extracted files
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add .
+          git commit -m "Extract AIChatConsole-source.zip via Actions"
+          git push
