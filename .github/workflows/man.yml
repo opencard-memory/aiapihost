@@ -1,0 +1,29 @@
+name: Unzip and Commit to Repo
+
+on:
+  workflow_dispatch: # Actions 탭에서 버튼 눌러서 수동 실행할 때 편함
+
+permissions:
+  contents: write # 레포지토리에 다시 푸시하려면 쓰기 권한 필수
+
+jobs:
+  unzip-and-push:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Unzip file
+        run: |
+          unzip -o MacOS/AIChatConsole-macOS-self-contained-build-kit.zip -d MacOS/
+          # 원본 zip 파일을 지우고 싶다면 아래 줄의 주석(#)을 해제해
+          rm MacOS/AIChatConsole-macOS-self-contained-build-kit.zip
+
+      - name: Commit and push extracted files
+        run: |
+          git config --local user.email "github-actions[bot]@users.noreply.github.com"
+          git config --local user.name "github-actions[bot]"
+          git add MacOS/
+          git diff --quiet && git diff --staged --quiet || git commit -m "Extract macOS build kit"
+          git push
