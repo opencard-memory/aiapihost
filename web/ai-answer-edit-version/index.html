@@ -1,0 +1,1415 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>AI 채팅 콘솔</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans+KR:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+/* 레이아웃: 대화 목록 | 대화창 | 설정 패널(필요할 때만 열림). 입력창은 하단 고정 */
+:root{
+  --bg:#F3F5F8; --surface:#FFFFFF; --surface-2:#EBEEF3; --line:#D8DDE6;
+  --fg:#131821; --muted:#5A6577;
+  --accent:#2A4BD7; --accent-fg:#FFFFFF; --accent-soft:#E4E9FD;
+  --danger:#C0392B; --ok:#1E8E5A; --warn:#B7791F;
+  --code-bg:#0F1522; --code-fg:#E3E8F4;
+  --font:'IBM Plex Sans KR',system-ui,-apple-system,'Apple SD Gothic Neo','Malgun Gothic',sans-serif;
+  --mono:'IBM Plex Mono',ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
+  color-scheme:light;
+}
+@media (prefers-color-scheme:dark){
+  :root:not([data-theme="light"]){
+    --bg:#0D1117; --surface:#151B24; --surface-2:#1C2430; --line:#2A3342;
+    --fg:#E7EAF0; --muted:#98A2B3;
+    --accent:#8AA2FF; --accent-fg:#0D1117; --accent-soft:#1F2A4F;
+    --danger:#FF8A7A; --ok:#4CC38A; --warn:#E5B567;
+    --code-bg:#0A0E15; --code-fg:#DCE3F2;
+    color-scheme:dark;
+  }
+}
+:root[data-theme="dark"]{
+  --bg:#0D1117; --surface:#151B24; --surface-2:#1C2430; --line:#2A3342;
+  --fg:#E7EAF0; --muted:#98A2B3;
+  --accent:#8AA2FF; --accent-fg:#0D1117; --accent-soft:#1F2A4F;
+  --danger:#FF8A7A; --ok:#4CC38A; --warn:#E5B567;
+  --code-bg:#0A0E15; --code-fg:#DCE3F2;
+  color-scheme:dark;
+}
+*{box-sizing:border-box}
+html,body{height:100%}
+body{margin:0;background:var(--bg);color:var(--fg);font:15px/1.6 var(--font);-webkit-font-smoothing:antialiased}
+[hidden]{display:none!important}
+button{font:inherit;color:inherit;cursor:pointer}
+:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+
+.app{display:grid;grid-template-columns:272px minmax(0,1fr);height:100dvh}
+.app.settings-open{grid-template-columns:272px minmax(0,1fr) 380px}
+
+/* 공통 컨트롤 */
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:8px;padding:8px 14px;border:1px solid var(--line);background:var(--surface);border-radius:9px;font-weight:500;font-size:14px}
+.btn:hover{background:var(--surface-2)}
+.btn.primary{background:var(--accent);color:var(--accent-fg);border-color:var(--accent)}
+.btn.primary:hover{filter:brightness(1.08)}
+.btn.ghost{border-color:transparent;background:transparent;color:var(--muted)}
+.btn.ghost:hover{background:var(--surface-2);color:var(--fg)}
+.icon-btn{display:inline-grid;place-items:center;width:36px;height:36px;border:0;background:transparent;border-radius:9px;color:var(--muted)}
+.icon-btn:hover{background:var(--surface-2);color:var(--fg)}
+.icon-btn.on{color:var(--accent);background:var(--accent-soft)}
+.input{width:100%;padding:8px 10px;border:1px solid var(--line);border-radius:8px;background:var(--surface);color:var(--fg);font:inherit;font-size:14px}
+.input.mono{font-family:var(--mono);font-size:13px}
+textarea.input{resize:vertical;min-height:64px;line-height:1.5}
+select.input{appearance:auto}
+.only-mobile{display:none}
+
+/* 사이드바 */
+aside.side{background:var(--surface);border-right:1px solid var(--line);display:flex;flex-direction:column;min-height:0;padding:14px;gap:12px}
+.side-top{display:flex;flex-direction:column;gap:10px}
+.brand{font-weight:600;font-size:15px;letter-spacing:-.01em;display:flex;align-items:center;gap:8px}
+.brand::before{content:"";width:10px;height:10px;border-radius:3px;background:var(--accent)}
+.conv-list{flex:1;overflow:auto;display:flex;flex-direction:column;gap:2px;margin:0 -6px;padding:0 6px}
+.conv{display:flex;align-items:center;gap:6px;padding:8px 10px;border-radius:8px;cursor:pointer;font-size:14px}
+.conv:hover{background:var(--surface-2)}
+.conv.active{background:var(--accent-soft)}
+.conv .ct{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.conv-del{border:0;background:transparent;color:var(--muted);border-radius:6px;padding:2px 6px;font-size:12px;opacity:0}
+.conv:hover .conv-del,.conv-del.confirm{opacity:1}
+.conv-del.confirm{color:var(--danger);font-weight:600}
+.empty-list{color:var(--muted);font-size:13px;padding:8px 10px}
+
+/* 메인 */
+.main{display:flex;flex-direction:column;min-width:0;min-height:0;position:relative}
+.top{display:flex;align-items:center;gap:10px;padding:10px 16px;border-bottom:1px solid var(--line);background:var(--surface)}
+.top-title{flex:1;min-width:0;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.conn{display:inline-flex;align-items:center;gap:7px;font:12px var(--mono);color:var(--muted);padding:4px 10px;border:1px solid var(--line);border-radius:99px;max-width:34vw;min-width:0}
+.conn span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.conn i{width:8px;height:8px;border-radius:50%;background:var(--muted);flex:none}
+.conn.ready i{background:var(--accent)}
+.conn.ok i{background:var(--ok)}
+.conn.err i{background:var(--danger)}
+.top-actions{display:flex;align-items:center;gap:2px;position:relative}
+.menu-wrap{position:relative}
+.menu{position:absolute;right:0;top:40px;background:var(--surface);border:1px solid var(--line);border-radius:10px;padding:4px;z-index:15;min-width:150px;box-shadow:0 8px 24px rgba(0,0,0,.14)}
+.menu button{display:block;width:100%;text-align:left;border:0;background:transparent;padding:8px 10px;border-radius:7px;font-size:14px}
+.menu button:hover{background:var(--surface-2)}
+
+.chat{flex:1;overflow:auto;scroll-behavior:auto}
+.chat-inner{max-width:820px;margin:0 auto;padding:24px 20px 12px;display:flex;flex-direction:column;gap:22px;min-height:100%}
+
+/* 시작 화면 */
+.welcome{margin:auto;max-width:580px;padding:4vh 0}
+.welcome h1{font-size:26px;letter-spacing:-.02em;margin:0 0 8px}
+.welcome .lead{color:var(--muted);margin:0 0 20px}
+.steps{list-style:none;margin:0 0 20px;padding:0;display:grid;gap:10px;counter-reset:s}
+.steps li{display:grid;grid-template-columns:28px 1fr;column-gap:12px;counter-increment:s}
+.steps li::before{content:counter(s);grid-row:span 2;width:28px;height:28px;border-radius:50%;background:var(--accent-soft);color:var(--accent);display:grid;place-items:center;font:500 13px var(--mono)}
+.steps b{font-weight:600}
+.steps span{color:var(--muted);font-size:14px}
+.presets{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:18px}
+.chip-btn{border:1px solid var(--line);background:var(--surface);border-radius:99px;padding:5px 12px;font-size:13px}
+.chip-btn:hover{border-color:var(--accent);color:var(--accent)}
+
+/* 메시지 */
+.msg{position:relative}
+.msg.user{align-self:flex-end;max-width:min(88%,660px);display:flex;flex-direction:column;align-items:flex-end;gap:6px}
+.msg.user .bubble{background:var(--accent-soft);padding:10px 14px;border-radius:16px 16px 4px 16px;white-space:pre-wrap;word-break:break-word}
+.msg.user.editing{align-self:stretch;max-width:none;align-items:stretch}
+.edit-ta{width:100%;min-height:90px;padding:10px 12px;border:1px solid var(--accent);border-radius:12px;background:var(--surface);color:var(--fg);font:inherit;line-height:1.55;resize:vertical}
+.msg.ai .edit-ta{min-height:140px;margin-top:4px}
+.edit-actions{display:flex;gap:8px;justify-content:flex-end;margin-top:8px}
+.atts{display:flex;flex-wrap:wrap;gap:6px;justify-content:flex-end}
+.att-img{max-width:220px;max-height:180px;border-radius:10px;border:1px solid var(--line);display:block}
+.att-file{display:inline-flex;align-items:center;gap:6px;padding:4px 10px;border:1px solid var(--line);border-radius:99px;font-size:13px;background:var(--surface)}
+.msg.ai{align-self:stretch;min-width:0}
+.meta{display:flex;gap:10px;align-items:center;font:12px var(--mono);color:var(--muted);margin-bottom:4px}
+.actions{display:flex;gap:2px;opacity:0;transition:opacity .12s}
+.msg:hover .actions,.msg:focus-within .actions{opacity:1}
+@media (hover:none){.actions{opacity:1}}
+.act{border:0;background:transparent;color:var(--muted);width:28px;height:28px;border-radius:7px;display:inline-grid;place-items:center}
+.act:hover{background:var(--surface-2);color:var(--fg)}
+.msg.ai .actions{margin-top:4px;margin-left:-6px}
+.err{margin:8px 0;padding:10px 12px;border:1px solid var(--danger);border-radius:10px;color:var(--danger);font-size:14px;white-space:pre-wrap;word-break:break-word}
+.note{margin:8px 0;font-size:13px;color:var(--warn)}
+.typing{display:flex;gap:5px;padding:8px 0}
+.typing i{width:7px;height:7px;border-radius:50%;background:var(--muted);animation:blink 1.2s infinite ease-in-out}
+.typing i:nth-child(2){animation-delay:.15s}.typing i:nth-child(3){animation-delay:.3s}
+@keyframes blink{0%,80%,100%{opacity:.25}40%{opacity:1}}
+@media (prefers-reduced-motion:reduce){.typing i{animation:none;opacity:.6}}
+
+details.think,details.tool{border:1px solid var(--line);border-radius:10px;background:var(--surface);margin:6px 0;font-size:13.5px}
+details summary{cursor:pointer;padding:7px 12px;color:var(--muted);display:flex;align-items:center;gap:10px;list-style:none}
+details summary::-webkit-details-marker{display:none}
+details summary::before{content:"▸";font-size:11px;transition:transform .12s}
+details[open] summary::before{transform:rotate(90deg)}
+.think-body{padding:2px 14px 12px;color:var(--muted);white-space:pre-wrap;word-break:break-word}
+.tname{font:13px var(--mono);color:var(--fg)}
+.tstat{font-size:12px;margin-left:auto}
+.tstat.done{color:var(--ok)}.tstat.error{color:var(--danger)}.tstat.running{color:var(--accent)}
+.tbody{padding:0 12px 12px}
+.tl{font-size:12px;color:var(--muted);margin:6px 0 3px}
+.tbody pre{margin:0;padding:8px 10px;background:var(--surface-2);border-radius:8px;font:12.5px/1.5 var(--mono);overflow:auto;max-height:240px;white-space:pre-wrap;word-break:break-word}
+
+/* 마크다운 */
+.md{word-break:break-word;overflow-wrap:anywhere}
+.md>*:first-child{margin-top:0}.md>*:last-child{margin-bottom:0}
+.md p{margin:.7em 0}
+.md h1,.md h2,.md h3,.md h4{margin:1.2em 0 .5em;line-height:1.3;letter-spacing:-.01em}
+.md h1{font-size:1.45em}.md h2{font-size:1.28em}.md h3{font-size:1.12em}.md h4,.md h5,.md h6{font-size:1em}
+.md ul,.md ol{margin:.6em 0;padding-left:1.5em}
+.md li{margin:.2em 0}
+.md li>p{margin:.3em 0}
+.md a{color:var(--accent)}
+.md code{font:0.88em var(--mono);background:var(--surface-2);padding:.12em .4em;border-radius:5px}
+.md blockquote{margin:.8em 0;padding:.1em 1em;border-left:3px solid var(--line);color:var(--muted)}
+.md hr{border:0;border-top:1px solid var(--line);margin:1.2em 0}
+.md .tbl{overflow-x:auto;margin:.8em 0}
+.md table{border-collapse:collapse;font-size:.94em;min-width:50%}
+.md th,.md td{border:1px solid var(--line);padding:6px 12px;text-align:left;vertical-align:top}
+.md th{background:var(--surface-2);font-weight:600}
+.code{background:var(--code-bg);color:var(--code-fg);border-radius:10px;overflow:hidden;margin:.9em 0}
+.code-head{display:flex;justify-content:space-between;align-items:center;padding:5px 8px 5px 14px;font:12px var(--mono);color:#9AA6BF;border-bottom:1px solid rgba(255,255,255,.08)}
+.copy-code{border:0;background:transparent;color:#9AA6BF;font-size:12px;padding:3px 8px;border-radius:6px}
+.copy-code:hover{background:rgba(255,255,255,.1);color:#fff}
+.code pre{margin:0;padding:12px 14px;overflow-x:auto}
+.code pre code{background:transparent;padding:0;font:13px/1.55 var(--mono);color:inherit;white-space:pre}
+
+/* 입력창 */
+.composer{padding:8px 20px calc(14px + env(safe-area-inset-bottom,0px))}
+.composer-box{max-width:820px;margin:0 auto;background:var(--surface);border:1px solid var(--line);border-radius:16px;padding:10px 10px 8px;box-shadow:0 2px 12px rgba(0,0,0,.05)}
+.composer-box:focus-within{border-color:var(--accent)}
+.composer textarea{width:100%;border:0;outline:0;background:transparent;color:var(--fg);font:inherit;resize:none;max-height:200px;padding:4px 6px;line-height:1.5}
+.comp-row{display:flex;align-items:center;gap:2px}
+.spacer{flex:1}
+.send{width:38px;height:38px;border-radius:50%;border:0;background:var(--accent);color:var(--accent-fg);display:grid;place-items:center}
+.send:disabled{opacity:.4;cursor:default}
+.chips{display:flex;flex-wrap:wrap;gap:6px;padding:0 4px 6px}
+.chips:empty{display:none}
+.chip{display:inline-flex;align-items:center;gap:6px;padding:3px 4px 3px 8px;border:1px solid var(--line);border-radius:99px;font-size:12.5px;background:var(--surface-2);max-width:220px}
+.chip img{width:22px;height:22px;border-radius:5px;object-fit:cover}
+.chip span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.chip button{border:0;background:transparent;color:var(--muted);border-radius:50%;width:20px;height:20px;line-height:1}
+.hint{max-width:820px;margin:6px auto 0;text-align:center;font-size:12px;color:var(--muted)}
+.drop{position:absolute;inset:0;background:color-mix(in srgb,var(--bg) 80%,transparent);border:2px dashed var(--accent);display:grid;place-items:center;font-weight:600;color:var(--accent);z-index:12;pointer-events:none}
+
+/* 설정 패널 */
+aside.settings{background:var(--surface);border-left:1px solid var(--line);overflow:auto;padding:16px 16px 28px;display:none}
+.app.settings-open aside.settings{display:block}
+.settings h2{font-size:15px;margin:0}
+.set-head{display:flex;align-items:center;justify-content:space-between;margin-bottom:14px}
+.sec{border-top:1px solid var(--line);padding-top:14px;margin-top:16px}
+.sec>h3{margin:0 0 10px;font-size:12px;font-weight:600;color:var(--muted);letter-spacing:.04em;text-transform:uppercase}
+.field{display:grid;gap:5px;margin-bottom:12px}
+.lbl{font-size:13px;color:var(--muted);font-weight:500;display:flex;justify-content:space-between;gap:8px}
+.row2{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.row-inline{display:flex;gap:8px}
+.row-inline .input{flex:1;min-width:0}
+.check{display:flex;gap:8px;align-items:flex-start;font-size:14px;margin-bottom:8px}
+.check input{margin-top:4px}
+.check small{display:block;color:var(--muted);font-size:12.5px}
+.status{font-size:12.5px;color:var(--muted);min-height:18px}
+.status.ok{color:var(--ok)}.status.err{color:var(--danger)}
+.fine{font-size:12.5px;color:var(--muted);margin:6px 0 0}
+details.adv summary{padding:0;color:var(--muted);font-size:13px;font-weight:500}
+details.adv{border:0;background:transparent;margin:0}
+details.adv>div{padding-top:12px}
+
+.scrim{position:fixed;inset:0;background:rgba(0,0,0,.42);z-index:20;display:none}
+.toast{position:fixed;left:50%;bottom:90px;transform:translate(-50%,12px);background:var(--fg);color:var(--bg);padding:9px 16px;border-radius:10px;font-size:14px;opacity:0;pointer-events:none;transition:.18s;z-index:50;max-width:90vw}
+.toast.show{opacity:1;transform:translate(-50%,0)}
+
+@media (max-width:1000px){
+  .app,.app.settings-open{grid-template-columns:minmax(0,1fr)}
+  aside.side,aside.settings{position:fixed;top:0;bottom:0;z-index:30;width:min(88vw,360px);transition:transform .2s}
+  aside.side{left:0;transform:translateX(-105%)}
+  aside.settings{display:block;right:0;transform:translateX(105%)}
+  .app.side-open aside.side,.app.settings-open aside.settings{transform:none}
+  .app.side-open+.scrim,.app.settings-open+.scrim{display:block}
+  .only-mobile{display:inline-grid}
+  .conn{max-width:40vw}
+  .composer{padding-left:12px;padding-right:12px}
+  .chat-inner{padding-left:14px;padding-right:14px}
+  .hint{display:none}
+}
+@media (prefers-reduced-motion:reduce){aside.side,aside.settings,.toast{transition:none}}
+</style>
+</head>
+<body>
+<div class="app" id="app">
+  <aside class="side" id="side">
+    <div class="side-top">
+      <div class="brand">AI 채팅 콘솔</div>
+      <button class="btn primary" id="newChat" data-ic="plus">새 대화</button>
+    </div>
+    <input class="input" id="convSearch" type="search" placeholder="대화 검색" aria-label="대화 검색">
+    <nav class="conv-list" id="convList" aria-label="대화 목록"></nav>
+    <button class="btn ghost" id="importBtn" data-ic="upload">대화 가져오기</button>
+    <input type="file" id="importFile" accept=".json,application/json" hidden>
+  </aside>
+
+  <main class="main" id="main">
+    <header class="top">
+      <button class="icon-btn only-mobile" id="sideToggle" data-ic="menu" aria-label="대화 목록 열기"></button>
+      <div class="top-title" id="convTitle">새 대화</div>
+      <div class="conn" id="conn" title="현재 연결 상태"><i></i><span id="connText">설정 필요</span></div>
+      <div class="top-actions">
+        <div class="menu-wrap">
+          <button class="icon-btn" id="exportBtn" data-ic="download" aria-label="대화 내보내기" title="대화 내보내기"></button>
+          <div class="menu" id="exportMenu" hidden>
+            <button data-exp="md">Markdown (.md)</button>
+            <button data-exp="json">JSON (.json)</button>
+          </div>
+        </div>
+        <button class="icon-btn" id="themeBtn" data-ic="contrast" aria-label="테마 전환" title="테마 전환"></button>
+        <button class="icon-btn" id="settingsBtn" data-ic="sliders" aria-label="설정" title="설정"></button>
+      </div>
+    </header>
+
+    <section class="chat" id="chat"><div class="chat-inner" id="msgs"></div></section>
+
+    <footer class="composer">
+      <div class="composer-box">
+        <div class="chips" id="chips"></div>
+        <textarea id="input" rows="1" placeholder="메시지를 입력하세요" aria-label="메시지 입력"></textarea>
+        <div class="comp-row">
+          <button class="icon-btn" id="attachBtn" data-ic="clip" aria-label="파일 첨부" title="이미지·PDF·텍스트 파일 첨부"></button>
+          <input type="file" id="fileInput" multiple hidden accept="image/*,.pdf,text/*,.md,.json,.csv,.js,.ts,.tsx,.jsx,.py,.html,.css,.xml,.yml,.yaml,.log,.sql,.sh,.java,.c,.cpp,.go,.rs">
+          <button class="icon-btn" id="micBtn" data-ic="mic" aria-label="음성 입력" title="음성 입력"></button>
+          <span class="spacer"></span>
+          <button class="send" id="sendBtn" aria-label="전송"></button>
+        </div>
+      </div>
+      <p class="hint" id="hint">Enter 전송 · Shift+Enter 줄바꿈 · 이미지는 붙여넣기·드래그로도 첨부</p>
+    </footer>
+    <div class="drop" id="drop" hidden>파일을 놓아 첨부</div>
+  </main>
+
+  <aside class="settings" id="settings" aria-label="설정">
+    <div class="set-head"><h2>설정</h2><button class="icon-btn" id="settingsClose" data-ic="x" aria-label="설정 닫기"></button></div>
+
+    <div class="field">
+      <span class="lbl">빠른 설정</span>
+      <div class="presets" id="presetBox" style="margin:0"></div>
+    </div>
+
+    <div class="sec" style="margin-top:6px">
+      <h3>연결</h3>
+      <div class="field">
+        <label class="lbl" for="s-provider">API 방식</label>
+        <select class="input" id="s-provider">
+          <option value="openai">OpenAI 호환 (Chat Completions)</option>
+          <option value="anthropic">Anthropic (Messages)</option>
+          <option value="gemini">Google Gemini</option>
+        </select>
+      </div>
+      <div class="field">
+        <label class="lbl" for="s-base">엔드포인트 주소</label>
+        <input class="input mono" id="s-base" type="url" placeholder="https://api.openai.com/v1" autocomplete="off" spellcheck="false">
+      </div>
+      <div class="field">
+        <label class="lbl" for="s-key">API 키</label>
+        <div class="row-inline">
+          <input class="input mono" id="s-key" type="password" placeholder="sk-..." autocomplete="off" spellcheck="false">
+          <button class="btn" id="keyShow" type="button">보기</button>
+        </div>
+        <label class="check" style="margin:4px 0 0"><input type="checkbox" id="s-remember"><span>이 브라우저에 키 저장<small>끄면 탭을 닫을 때 키가 지워집니다. 키는 입력한 엔드포인트로만 전송됩니다.</small></span></label>
+      </div>
+      <div class="field">
+        <label class="lbl" for="s-model">모델</label>
+        <div class="row-inline">
+          <input class="input mono" id="s-model" list="s-models" placeholder="모델 이름" autocomplete="off" spellcheck="false">
+          <button class="btn" id="s-load" type="button">모델 불러오기</button>
+        </div>
+        <datalist id="s-models"></datalist>
+        <div class="status" id="s-status"></div>
+      </div>
+    </div>
+
+    <div class="sec">
+      <h3>대화</h3>
+      <div class="field">
+        <label class="lbl" for="s-system">시스템 프롬프트</label>
+        <textarea class="input" id="s-system" placeholder="예: 당신은 간결하게 답하는 한국어 어시스턴트입니다."></textarea>
+      </div>
+      <label class="check"><input type="checkbox" id="s-stream"><span>스트리밍 응답<small>글자가 생성되는 대로 바로 표시합니다.</small></span></label>
+    </div>
+
+    <div class="sec">
+      <h3>생성 옵션 <span style="text-transform:none;letter-spacing:0;font-weight:400">(비우면 서버 기본값)</span></h3>
+      <div class="row2">
+        <div class="field"><label class="lbl" for="s-temp">temperature</label><input class="input mono" id="s-temp" inputmode="decimal" placeholder="1.0"></div>
+        <div class="field"><label class="lbl" for="s-topp">top_p</label><input class="input mono" id="s-topp" inputmode="decimal" placeholder="1.0"></div>
+      </div>
+      <div class="field"><label class="lbl" for="s-max">최대 출력 토큰</label><input class="input mono" id="s-max" inputmode="numeric" placeholder="Anthropic은 비우면 4096"></div>
+      <div class="field" data-for="openai"><label class="lbl" for="s-effort">추론 강도 (reasoning_effort)</label>
+        <select class="input" id="s-effort"><option value="">사용 안 함</option><option value="minimal">minimal</option><option value="low">low</option><option value="medium">medium</option><option value="high">high</option></select>
+      </div>
+      <div data-for="anthropic gemini">
+        <label class="check"><input type="checkbox" id="s-think"><span>생각 과정 사용 (extended thinking)<small>지원하는 모델에서만 켜세요. 생각 과정은 접이식으로 표시됩니다.</small></span></label>
+        <div class="field"><label class="lbl" for="s-budget">생각 토큰 예산</label><input class="input mono" id="s-budget" inputmode="numeric" placeholder="8000"></div>
+      </div>
+    </div>
+
+    <div class="sec">
+      <h3>도구 호출</h3>
+      <label class="check"><input type="checkbox" id="s-t-time"><span>현재 시각<small>get_current_time</small></span></label>
+      <label class="check"><input type="checkbox" id="s-t-calc"><span>계산기<small>calculate</small></span></label>
+      <label class="check"><input type="checkbox" id="s-t-fetch"><span>웹 페이지 가져오기<small>fetch_url · CORS를 허용하는 주소만 가능</small></span></label>
+      <p class="fine">모델이 도구를 요청하면 이 브라우저에서 실행하고 결과를 다시 모델에 전달합니다. 도구를 지원하지 않는 모델에서는 끄세요.</p>
+    </div>
+
+    <div class="sec">
+      <details class="adv">
+        <summary>고급 설정</summary>
+        <div>
+          <div class="field" data-for="openai"><label class="lbl" for="s-tokparam">토큰 제한 파라미터 이름</label>
+            <select class="input" id="s-tokparam"><option value="max_tokens">max_tokens</option><option value="max_completion_tokens">max_completion_tokens (OpenAI 신형 모델)</option></select>
+          </div>
+          <div class="field"><label class="lbl" for="s-proxy">CORS 프록시 접두사</label><input class="input mono" id="s-proxy" placeholder="https://my-proxy.example.com/?url=" spellcheck="false"></div>
+          <div class="field"><label class="lbl" for="s-headers">추가 요청 헤더 (JSON)</label><textarea class="input mono" id="s-headers" placeholder='{"HTTP-Referer":"https://example.com"}' spellcheck="false"></textarea></div>
+          <div class="field"><label class="lbl" for="s-body">추가 요청 본문 (JSON)</label><textarea class="input mono" id="s-body" placeholder='{"top_k":40, "stream_options":null}' spellcheck="false"></textarea>
+            <p class="fine">요청 본문에 그대로 합쳐집니다. 값을 null로 두면 해당 항목을 뺍니다. 웹 검색, 응답 형식 지정 같은 서비스별 기능에 사용하세요.</p></div>
+        </div>
+      </details>
+    </div>
+    <p class="fine" style="margin-top:18px">브라우저에서 직접 호출하므로 서버가 CORS를 허용해야 합니다. 막히면 고급 설정의 프록시를 사용하세요.</p>
+  </aside>
+</div>
+<div class="scrim" id="scrim"></div>
+<div class="toast" id="toast" role="status" aria-live="polite"></div>
+
+<script>
+'use strict';
+/* ================= 유틸 ================= */
+const $=(s,r)=>(r||document).querySelector(s);
+const $$=(s,r)=>Array.from((r||document).querySelectorAll(s));
+const uid=()=>Math.random().toString(36).slice(2,9)+Date.now().toString(36).slice(-4);
+const esc=s=>String(s==null?'':s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const num=v=>(v===''||v==null||isNaN(Number(v)))?null:Number(v);
+const LS={
+  get(k,d){try{const v=localStorage.getItem(k);return v==null?d:JSON.parse(v)}catch(e){return d}},
+  set(k,v){try{localStorage.setItem(k,JSON.stringify(v))}catch(e){}}
+};
+let toastTimer;
+function toast(msg,ms){const t=$('#toast');t.textContent=msg;t.classList.add('show');clearTimeout(toastTimer);toastTimer=setTimeout(()=>t.classList.remove('show'),ms||2600)}
+
+const ICONS={
+  send:'<path d="M12 19V5M5 12l7-7 7 7"/>',
+  stop:'<rect x="6.5" y="6.5" width="11" height="11" rx="2" fill="currentColor"/>',
+  clip:'<path d="M21 11.5l-8.6 8.6a5 5 0 0 1-7-7l8.6-8.6a3.5 3.5 0 0 1 5 5l-8.6 8.6a2 2 0 0 1-3-3l7.9-7.9"/>',
+  mic:'<rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5 11a7 7 0 0 0 14 0M12 18v3"/>',
+  copy:'<rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15V6a2 2 0 0 1 2-2h9"/>',
+  refresh:'<path d="M20 11a8 8 0 1 0-2.3 5.7M20 4v7h-7"/>',
+  trash:'<path d="M4 7h16M10 11v6M14 11v6M6 7l1 13h10l1-13M9 7V4h6v3"/>',
+  edit:'<path d="M4 20h4L19 9l-4-4L4 16v4zM13.5 6.5l4 4"/>',
+  speaker:'<path d="M4 9v6h4l5 4V5L8 9H4zM17 8a5 5 0 0 1 0 8"/>',
+  download:'<path d="M12 4v11M7 11l5 5 5-5M5 20h14"/>',
+  upload:'<path d="M12 16V5M7 9l5-5 5 5M5 20h14"/>',
+  x:'<path d="M6 6l12 12M18 6L6 18"/>',
+  menu:'<path d="M4 6h16M4 12h16M4 18h16"/>',
+  plus:'<path d="M12 5v14M5 12h14"/>',
+  sliders:'<path d="M4 7h10M18 7h2M4 17h4M12 17h8"/><circle cx="16" cy="7" r="2"/><circle cx="10" cy="17" r="2"/>',
+  contrast:'<circle cx="12" cy="12" r="8"/><path d="M12 4a8 8 0 0 1 0 16z" fill="currentColor"/>'
+};
+const ic=(n,sz)=>`<svg viewBox="0 0 24 24" width="${sz||18}" height="${sz||18}" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${ICONS[n]||''}</svg>`;
+$$('[data-ic]').forEach(el=>el.insertAdjacentHTML('afterbegin',ic(el.dataset.ic)+(el.textContent.trim()?'':'')));
+
+/* ================= 마크다운 ================= */
+function inline(t){
+  const codes=[];
+  t=t.replace(/`([^`\n]+)`/g,(m,c)=>{codes.push(c);return '\u0001'+(codes.length-1)+'\u0001'});
+  t=esc(t);
+  t=t.replace(/\[([^\]]+)\]\((https?:\/\/[^\s)]+)\)/g,'<a href="$2" target="_blank" rel="noopener noreferrer">$1</a>');
+  t=t.replace(/\*\*([^*\n]+)\*\*/g,'<strong>$1</strong>').replace(/__([^_\n]+)__/g,'<strong>$1</strong>');
+  t=t.replace(/(^|[^*\w])\*([^\s*][^*\n]*?)\*(?!\*)/g,'$1<em>$2</em>');
+  t=t.replace(/~~([^~\n]+)~~/g,'<del>$1</del>');
+  t=t.replace(/\u0001(\d+)\u0001/g,(m,i)=>'<code>'+esc(codes[+i])+'</code>');
+  return t;
+}
+function codeBlock(b){
+  return `<div class="code"><div class="code-head"><span>${esc(b[0]||'text')}</span><button class="copy-code" type="button">복사</button></div><pre><code>${esc(b[1])}</code></pre></div>`;
+}
+const TBL_SEP=/^\s*\|?\s*:?-+:?\s*(\|\s*:?-+:?\s*)+\|?\s*$/;
+function isBlockStart(l){
+  return /^\s*(#{1,6}\s|>|([-*+]|\d+[.)])\s+|\u0002\d+\u0002)/.test(l)||/^\s*([-*_])(\s*\1){2,}\s*$/.test(l);
+}
+function parseList(lines,i,blocks){
+  const re=/^(\s*)([-*+]|\d+[.)])\s+(.*)$/;
+  const f=lines[i].match(re);
+  const base=f[1].length, ordered=/\d/.test(f[2]), start=ordered?parseInt(f[2],10):1;
+  const items=[];
+  while(i<lines.length){
+    const l=lines[i];
+    if(!l.trim()){
+      let j=i;while(j<lines.length&&!lines[j].trim())j++;
+      const mm=j<lines.length&&lines[j].match(re);
+      if(mm&&mm[1].length>=base&&(/\d/.test(mm[2])===ordered||mm[1].length>base)){i=j;continue}
+      break;
+    }
+    const m=l.match(re);
+    if(m&&m[1].length===base){items.push({t:m[3],sub:[]});i++}
+    else if(items.length&&l.match(/^(\s*)/)[1].length>base){items[items.length-1].sub.push(l.slice(Math.min(base+2,l.match(/^(\s*)/)[1].length)));i++}
+    else break;
+  }
+  const tag=ordered?'ol':'ul';
+  const html=`<${tag}${ordered&&start!==1?' start="'+start+'"':''}>`+items.map(it=>`<li>${inline(it.t)}${it.sub.length?blockHtml(it.sub.join('\n'),blocks):''}</li>`).join('')+`</${tag}>`;
+  return [html,i];
+}
+function blockHtml(src,blocks){
+  const lines=src.split('\n');const out=[];let i=0,m;
+  while(i<lines.length){
+    const l=lines[i];
+    if(!l.trim()){i++;continue}
+    if((m=l.match(/^\s*\u0002(\d+)\u0002\s*$/))){out.push(codeBlock(blocks[+m[1]]));i++;continue}
+    if((m=l.match(/^\s{0,3}(#{1,6})\s+(.*)$/))){const n=m[1].length;out.push(`<h${n}>${inline(m[2])}</h${n}>`);i++;continue}
+    if(/^\s*([-*_])(\s*\1){2,}\s*$/.test(l)){out.push('<hr>');i++;continue}
+    if(/^\s*>/.test(l)){
+      const buf=[];
+      while(i<lines.length&&/^\s*>/.test(lines[i])){buf.push(lines[i].replace(/^\s*>\s?/,''));i++}
+      out.push('<blockquote>'+blockHtml(buf.join('\n'),blocks)+'</blockquote>');continue;
+    }
+    if(/^\s*([-*+]|\d+[.)])\s+/.test(l)){const r=parseList(lines,i,blocks);out.push(r[0]);i=r[1];continue}
+    if(l.includes('|')&&i+1<lines.length&&TBL_SEP.test(lines[i+1])){
+      const row=s=>s.trim().replace(/^\||\|$/g,'').split('|').map(c=>c.trim());
+      const head=row(l);
+      const al=row(lines[i+1]).map(c=>/^:-+:$/.test(c)?'center':/-:$/.test(c)?'right':'');
+      i+=2;const rows=[];
+      while(i<lines.length&&lines[i].trim()&&lines[i].includes('|')){rows.push(row(lines[i]));i++}
+      const st=k=>al[k]?` style="text-align:${al[k]}"`:'';
+      out.push('<div class="tbl"><table><thead><tr>'+head.map((h,k)=>`<th${st(k)}>${inline(h)}</th>`).join('')+'</tr></thead><tbody>'+rows.map(r=>'<tr>'+r.map((c,k)=>`<td${st(k)}>${inline(c)}</td>`).join('')+'</tr>').join('')+'</tbody></table></div>');
+      continue;
+    }
+    const buf=[l];i++;
+    while(i<lines.length&&lines[i].trim()&&!isBlockStart(lines[i])&&!(lines[i].includes('|')&&i+1<lines.length&&TBL_SEP.test(lines[i+1]))){buf.push(lines[i]);i++}
+    out.push('<p>'+inline(buf.join('\n')).replace(/\n/g,'<br>')+'</p>');
+  }
+  return out.join('');
+}
+function md(src){
+  const blocks=[];
+  src=String(src||'').replace(/\r\n/g,'\n').replace(/```([^\n`]*)\n([\s\S]*?)(?:```|$)/g,(m,lang,code)=>{blocks.push([lang.trim(),code.replace(/\n$/,'')]);return '\n\u0002'+(blocks.length-1)+'\u0002\n'});
+  return blockHtml(src,blocks);
+}
+
+/* ================= 저장소 ================= */
+const DB=(()=>{
+  let p;
+  const open=()=>p||(p=new Promise((res,rej)=>{
+    const r=indexedDB.open('aichat-console',1);
+    r.onupgradeneeded=()=>r.result.createObjectStore('convs',{keyPath:'id'});
+    r.onsuccess=()=>res(r.result);r.onerror=()=>rej(r.error);
+  }));
+  const tx=async(mode,fn)=>{
+    const db=await open();
+    return new Promise((res,rej)=>{
+      const t=db.transaction('convs',mode);const rq=fn(t.objectStore('convs'));
+      t.oncomplete=()=>res(rq&&rq.result);t.onerror=()=>rej(t.error);t.onabort=()=>rej(t.error);
+    });
+  };
+  return{all:()=>tx('readonly',s=>s.getAll()),put:c=>tx('readwrite',s=>s.put(c)),del:id=>tx('readwrite',s=>s.delete(id))};
+})();
+let memOnly=false;
+
+/* ================= 설정 ================= */
+const PRESETS=[
+  {name:'OpenAI',provider:'openai',base:'https://api.openai.com/v1'},
+  {name:'Anthropic',provider:'anthropic',base:'https://api.anthropic.com'},
+  {name:'Google Gemini',provider:'gemini',base:'https://generativelanguage.googleapis.com/v1beta'},
+  {name:'OpenRouter',provider:'openai',base:'https://openrouter.ai/api/v1'},
+  {name:'Groq',provider:'openai',base:'https://api.groq.com/openai/v1'},
+  {name:'DeepSeek',provider:'openai',base:'https://api.deepseek.com'},
+  {name:'xAI',provider:'openai',base:'https://api.x.ai/v1'},
+  {name:'Mistral',provider:'openai',base:'https://api.mistral.ai/v1'},
+  {name:'Ollama',provider:'openai',base:'http://localhost:11434/v1'},
+  {name:'LM Studio',provider:'openai',base:'http://localhost:1234/v1'}
+];
+const DEF={provider:'openai',base:'https://api.openai.com/v1',model:'',system:'',stream:true,temperature:'',topP:'',maxTokens:'',tokenParam:'max_tokens',effort:'',thinking:false,budget:'8000',tTime:false,tCalc:false,tFetch:false,proxy:'',headers:'',body:'',remember:false};
+let S=Object.assign({},DEF,LS.get('aichat.settings',{}));
+const saveS=()=>LS.set('aichat.settings',S);
+const getKey=()=>{try{return sessionStorage.getItem('aichat.key')||localStorage.getItem('aichat.key')||''}catch(e){return ''}};
+function setKey(v){
+  try{
+    sessionStorage.removeItem('aichat.key');localStorage.removeItem('aichat.key');
+    if(v)(S.remember?localStorage:sessionStorage).setItem('aichat.key',v);
+  }catch(e){}
+}
+const MAP=[['s-provider','provider'],['s-base','base'],['s-model','model'],['s-system','system'],['s-temp','temperature'],['s-topp','topP'],['s-max','maxTokens'],['s-tokparam','tokenParam'],['s-effort','effort'],['s-budget','budget'],['s-proxy','proxy'],['s-headers','headers'],['s-body','body']];
+const CHK=[['s-stream','stream'],['s-think','thinking'],['s-t-time','tTime'],['s-t-calc','tCalc'],['s-t-fetch','tFetch'],['s-remember','remember']];
+function bindSettings(){
+  MAP.forEach(([id,k])=>{
+    const el=$('#'+id);el.value=S[k]==null?'':S[k];
+    const h=()=>{
+      if(id==='s-provider'&&el.value!==S.provider){
+        const wasPreset=PRESETS.some(p=>p.base===S.base)||!S.base.trim();
+        S.provider=el.value;
+        if(wasPreset){const p=PRESETS.find(p=>p.provider===S.provider);if(p){S.base=p.base;$('#s-base').value=p.base}}
+      }else S[k]=el.value;
+      saveS();syncUI();
+    };
+    el.addEventListener('input',h);el.addEventListener('change',h);
+  });
+  CHK.forEach(([id,k])=>{
+    const el=$('#'+id);el.checked=!!S[k];
+    el.addEventListener('change',()=>{S[k]=el.checked;saveS();if(k==='remember')setKey($('#s-key').value);syncUI()});
+  });
+  $('#s-key').value=getKey();
+  $('#s-key').addEventListener('input',e=>{setKey(e.target.value.trim());syncUI()});
+  $('#keyShow').addEventListener('click',()=>{const k=$('#s-key');k.type=k.type==='password'?'text':'password';$('#keyShow').textContent=k.type==='password'?'보기':'숨기기'});
+  $('#presetBox').innerHTML=PRESETS.map((p,i)=>`<button class="chip-btn" type="button" data-preset="${i}">${esc(p.name)}</button>`).join('');
+  $('#s-load').addEventListener('click',loadModels);
+}
+function applyPreset(i){
+  const p=PRESETS[i];if(!p)return;
+  if(S.provider!==p.provider)S.model='';
+  S.provider=p.provider;S.base=p.base;saveS();
+  $('#s-provider').value=S.provider;$('#s-base').value=S.base;$('#s-model').value=S.model;
+  syncUI();openSettings(true);
+  toast(p.name+' 주소를 입력했습니다. API 키와 모델을 입력하세요.');
+  setTimeout(()=>$('#s-key').focus(),50);
+}
+function syncUI(){
+  $$('[data-for]').forEach(el=>{el.hidden=!el.dataset.for.split(' ').includes(S.provider)});
+  if(connState!=='ok'&&connState!=='err')setConn(S.base&&S.model?'ready':'idle');
+  else setConn(connState);
+}
+let connState='idle';
+function setConn(st,text){
+  connState=st;
+  const c=$('#conn');c.className='conn '+(st==='idle'?'':st);
+  $('#connText').textContent=text||(S.model||'설정 필요');
+}
+
+/* ================= 설정 패널 / 레이아웃 ================= */
+const app=$('#app');
+function openSettings(force){
+  const open=force===undefined?!app.classList.contains('settings-open'):force;
+  app.classList.toggle('settings-open',open);
+  $('#settingsBtn').classList.toggle('on',open);
+  if(open)app.classList.remove('side-open');
+}
+function toggleSide(force){app.classList.toggle('side-open',force);if(force)app.classList.remove('settings-open')}
+$('#settingsBtn').addEventListener('click',()=>openSettings());
+$('#settingsClose').addEventListener('click',()=>openSettings(false));
+$('#sideToggle').addEventListener('click',()=>toggleSide(!app.classList.contains('side-open')));
+$('#scrim').addEventListener('click',()=>{app.classList.remove('side-open');openSettings(false)});
+function applyTheme(t){
+  const r=document.documentElement;
+  if(t==='light'||t==='dark')r.setAttribute('data-theme',t);else r.removeAttribute('data-theme');
+}
+$('#themeBtn').addEventListener('click',()=>{
+  const order=['system','light','dark'];const cur=LS.get('aichat.theme','system');
+  const nx=order[(order.indexOf(cur)+1)%3];LS.set('aichat.theme',nx);applyTheme(nx);
+  toast('테마: '+({system:'시스템 설정',light:'라이트',dark:'다크'}[nx]));
+});
+
+/* ================= 요청 만들기 ================= */
+const normBase=()=>S.base.trim().replace(/\/+$/,'');
+function chatUrl(s){
+  let b=s.base.trim().replace(/\/+$/,'');
+  if(s.provider==='openai')return /\/chat\/completions$/.test(b)?b:b+'/chat/completions';
+  if(s.provider==='anthropic'){if(/\/messages$/.test(b))return b;return /\/v1$/.test(b)?b+'/messages':b+'/v1/messages'}
+  if(/:(stream)?generateContent/i.test(b))return b;
+  const model=encodeURIComponent((s.model||'').replace(/^models\//,''));
+  return `${b}/models/${model}:${s.stream?'streamGenerateContent?alt=sse':'generateContent'}`;
+}
+function listUrl(s){
+  let b=s.base.trim().replace(/\/+$/,'');
+  if(s.provider==='openai')return b.replace(/\/chat\/completions$/,'')+'/models';
+  if(s.provider==='anthropic'){b=b.replace(/\/messages$/,'');return(/\/v1$/.test(b)?b:b+'/v1')+'/models?limit=1000'}
+  b=b.replace(/\/models\/.*$/,'');return b+'/models?pageSize=1000';
+}
+function headersFor(s,method){
+  const h={};
+  if(method!=='GET')h['Content-Type']='application/json';
+  const key=getKey();
+  if(s.provider==='openai'){if(key)h['Authorization']='Bearer '+key}
+  else if(s.provider==='anthropic'){if(key)h['x-api-key']=key;h['anthropic-version']='2023-06-01';h['anthropic-dangerous-direct-browser-access']='true'}
+  else{if(key)h['x-goog-api-key']=key}
+  if(s.headers.trim()){
+    let x;try{x=JSON.parse(s.headers)}catch(e){throw new Error('추가 요청 헤더가 올바른 JSON이 아닙니다.')}
+    Object.assign(h,x);
+  }
+  return h;
+}
+function proxied(url){
+  const p=(S.proxy||'').trim();if(!p)return url;
+  return p+((/[?=]$/.test(p)||p.includes('?'))?encodeURIComponent(url):url);
+}
+function textOfUser(m){
+  const f=(m.attachments||[]).filter(a=>a.kind==='text').map(a=>`<첨부파일 이름="${a.name}">\n${a.data}\n</첨부파일>`);
+  return(f.length?f.join('\n\n')+'\n\n':'')+(m.text||'');
+}
+function buildOpenAI(s,hist,tools){
+  const msgs=[];
+  if(s.system.trim())msgs.push({role:'system',content:s.system});
+  for(const m of hist){
+    if(m.role==='user'){
+      const media=(m.attachments||[]).filter(a=>a.kind!=='text');const txt=textOfUser(m);
+      if(!media.length)msgs.push({role:'user',content:txt});
+      else{
+        const c=[];if(txt)c.push({type:'text',text:txt});
+        for(const a of media){
+          if(a.kind==='image')c.push({type:'image_url',image_url:{url:`data:${a.mime};base64,${a.data}`}});
+          else c.push({type:'file',file:{filename:a.name,file_data:`data:${a.mime};base64,${a.data}`}});
+        }
+        msgs.push({role:'user',content:c});
+      }
+    }else if(m.role==='assistant'){
+      const o={role:'assistant',content:m.text||''};
+      if(m.toolCalls&&m.toolCalls.length){
+        o.content=m.text||null;
+        o.tool_calls=m.toolCalls.map(tc=>({id:tc.id,type:'function',function:{name:tc.name,arguments:tc.argsRaw||JSON.stringify(tc.args||{})}}));
+      }
+      msgs.push(o);
+    }else if(m.role==='tool'){
+      for(const r of m.results)msgs.push({role:'tool',tool_call_id:r.id,content:r.content});
+    }
+  }
+  const b={model:s.model,messages:msgs,stream:!!s.stream};
+  if(s.stream)b.stream_options={include_usage:true};
+  if(num(s.temperature)!=null)b.temperature=num(s.temperature);
+  if(num(s.topP)!=null)b.top_p=num(s.topP);
+  if(num(s.maxTokens)!=null)b[s.tokenParam||'max_tokens']=Math.round(num(s.maxTokens));
+  if(s.effort)b.reasoning_effort=s.effort;
+  if(tools.length)b.tools=tools.map(t=>({type:'function',function:{name:t.name,description:t.description,parameters:t.parameters}}));
+  return{url:chatUrl(s),body:b};
+}
+function buildAnthropic(s,hist,tools){
+  const msgs=[];
+  for(const m of hist){
+    if(m.role==='user'){
+      const c=[];
+      for(const a of m.attachments||[]){
+        if(a.kind==='image')c.push({type:'image',source:{type:'base64',media_type:a.mime,data:a.data}});
+        else if(a.kind==='pdf')c.push({type:'document',source:{type:'base64',media_type:'application/pdf',data:a.data}});
+      }
+      const t=textOfUser(m);c.push({type:'text',text:t||' '});
+      msgs.push({role:'user',content:c});
+    }else if(m.role==='assistant'){
+      let c;
+      if(m.anthropicBlocks&&m.anthropicBlocks.length){
+        c=m.anthropicBlocks.filter(b=>b&&!(b.type==='text'&&!b.text)&&(s.thinking||(b.type!=='thinking'&&b.type!=='redacted_thinking'))).map(b=>{const o=Object.assign({},b);delete o._json;return o});
+      }else{
+        c=[];if(m.text)c.push({type:'text',text:m.text});
+        for(const tc of m.toolCalls||[])c.push({type:'tool_use',id:tc.id,name:tc.name,input:tc.args||{}});
+      }
+      if(c.length)msgs.push({role:'assistant',content:c});
+    }else if(m.role==='tool'){
+      msgs.push({role:'user',content:m.results.map(r=>{const o={type:'tool_result',tool_use_id:r.id,content:r.content};if(r.isError)o.is_error=true;return o})});
+    }
+  }
+  let maxT=Math.round(num(s.maxTokens)||4096);
+  const b={model:s.model,max_tokens:maxT,messages:msgs,stream:!!s.stream};
+  if(s.system.trim())b.system=s.system;
+  if(s.thinking){
+    const bud=Math.max(1024,Math.round(num(s.budget)||8000));
+    b.thinking={type:'enabled',budget_tokens:bud};
+    if(b.max_tokens<=bud)b.max_tokens=bud+4096;
+  }else{
+    if(num(s.temperature)!=null)b.temperature=num(s.temperature);
+    else if(num(s.topP)!=null)b.top_p=num(s.topP);
+  }
+  if(tools.length)b.tools=tools.map(t=>({name:t.name,description:t.description,input_schema:t.parameters}));
+  return{url:chatUrl(s),body:b};
+}
+function buildGemini(s,hist,tools){
+  const contents=[];
+  for(const m of hist){
+    if(m.role==='user'){
+      const parts=[];const t=textOfUser(m);if(t)parts.push({text:t});
+      for(const a of m.attachments||[])if(a.kind!=='text')parts.push({inlineData:{mimeType:a.mime,data:a.data}});
+      if(!parts.length)parts.push({text:' '});
+      contents.push({role:'user',parts});
+    }else if(m.role==='assistant'){
+      let parts;
+      if(m.geminiParts&&m.geminiParts.length)parts=m.geminiParts.filter(p=>!p.thought);
+      else{parts=[];if(m.text)parts.push({text:m.text});for(const tc of m.toolCalls||[])parts.push({functionCall:{name:tc.name,args:tc.args||{}}})}
+      if(parts.length)contents.push({role:'model',parts});
+    }else if(m.role==='tool'){
+      contents.push({role:'user',parts:m.results.map(r=>({functionResponse:{name:r.name,response:r.isError?{error:r.content}:{result:r.content}}}))});
+    }
+  }
+  const gc={};
+  if(num(s.temperature)!=null)gc.temperature=num(s.temperature);
+  if(num(s.topP)!=null)gc.topP=num(s.topP);
+  if(num(s.maxTokens)!=null)gc.maxOutputTokens=Math.round(num(s.maxTokens));
+  if(s.thinking)gc.thinkingConfig={includeThoughts:true,thinkingBudget:Math.round(num(s.budget)||8000)};
+  const b={contents};
+  if(s.system.trim())b.systemInstruction={parts:[{text:s.system}]};
+  if(Object.keys(gc).length)b.generationConfig=gc;
+  if(tools.length)b.tools=[{functionDeclarations:tools.map(t=>({name:t.name,description:t.description,parameters:t.parameters}))}];
+  return{url:chatUrl(s),body:b};
+}
+const BUILD={openai:buildOpenAI,anthropic:buildAnthropic,gemini:buildGemini};
+
+function cleanHistory(ms){
+  const out=[];
+  for(let i=0;i<ms.length;i++){
+    const m=ms[i];
+    if(m.role==='user')out.push(m);
+    else if(m.role==='assistant'){
+      const nx=ms[i+1];
+      if(m.toolCalls&&m.toolCalls.length&&!(nx&&nx.role==='tool'))out.push(Object.assign({},m,{toolCalls:[],anthropicBlocks:null,geminiParts:null}));
+      else out.push(m);
+    }else if(m.role==='tool'){
+      const pv=ms[i-1];if(pv&&pv.role==='assistant'&&pv.toolCalls&&pv.toolCalls.length)out.push(m);
+    }
+  }
+  return out.filter(m=>!(m.role==='assistant'&&!m.text&&!(m.toolCalls&&m.toolCalls.length)&&!(m.anthropicBlocks&&m.anthropicBlocks.length)&&!(m.geminiParts&&m.geminiParts.length)));
+}
+
+/* ================= 스트림 파서 ================= */
+function parseSSE(raw){
+  const ev={event:'',data:''};
+  for(const line of raw.split(/\r?\n/)){
+    if(line.startsWith('event:'))ev.event=line.slice(6).trim();
+    else if(line.startsWith('data:'))ev.data+=(ev.data?'\n':'')+line.slice(5).replace(/^ /,'');
+  }
+  return ev;
+}
+async function* sse(resp){
+  const reader=resp.body.getReader();const dec=new TextDecoder();let buf='';
+  while(true){
+    const{value,done}=await reader.read();
+    if(done)break;
+    buf+=dec.decode(value,{stream:true});
+    let mm;
+    while((mm=buf.match(/\r?\n\r?\n/))){
+      const raw=buf.slice(0,mm.index);buf=buf.slice(mm.index+mm[0].length);
+      const ev=parseSSE(raw);if(ev.data)yield ev;
+    }
+  }
+  buf+=dec.decode();
+  if(buf.trim()){const ev=parseSSE(buf);if(ev.data)yield ev}
+}
+function errText(t){
+  try{const j=JSON.parse(t);const e=j.error;return(e&&(e.message||(typeof e==='string'?e:JSON.stringify(e))))||j.message||j.detail||t.slice(0,600)}
+  catch(e){return String(t).slice(0,600)}
+}
+/* OpenAI */
+function syncOpenAI(a){
+  a.toolCalls=(a._tc||[]).map((t,i)=>t?{id:t.id||('call_'+a.id+'_'+i),name:t.name||'',argsRaw:t.argsRaw||'',args:(()=>{try{return t.argsRaw?JSON.parse(t.argsRaw):{}}catch(e){return{}}})(),status:'pending'}:null).filter(Boolean);
+}
+function chunkOpenAI(j,a){
+  if(j.error)throw new Error(typeof j.error==='string'?j.error:(j.error.message||JSON.stringify(j.error)));
+  if(j.usage)a.usage={in:j.usage.prompt_tokens||0,out:j.usage.completion_tokens||0};
+  const ch=j.choices&&j.choices[0];if(!ch)return;
+  const d=ch.delta||{};
+  if(d.content)a.text+=d.content;
+  const r=d.reasoning_content!=null?d.reasoning_content:d.reasoning;
+  if(typeof r==='string'&&r)a.thinking=(a.thinking||'')+r;
+  if(d.tool_calls){
+    a._tc=a._tc||[];
+    d.tool_calls.forEach((tc,k)=>{
+      const idx=tc.index!=null?tc.index:k;
+      const slot=a._tc[idx]||(a._tc[idx]={id:'',name:'',argsRaw:''});
+      if(tc.id)slot.id=tc.id;
+      if(tc.function){
+        if(tc.function.name&&!slot.name)slot.name=tc.function.name;
+        if(tc.function.arguments)slot.argsRaw+=tc.function.arguments;
+      }
+    });
+    syncOpenAI(a);
+  }
+  if(ch.finish_reason)a.finish=ch.finish_reason;
+}
+async function streamOpenAI(resp,a){
+  for await(const ev of sse(resp)){
+    if(ev.data.trim()==='[DONE]')break;
+    let j;try{j=JSON.parse(ev.data)}catch(e){continue}
+    chunkOpenAI(j,a);sched(a);
+  }
+}
+function fullOpenAI(j,a){
+  if(j.error)throw new Error(typeof j.error==='string'?j.error:(j.error.message||JSON.stringify(j.error)));
+  const ch=j.choices&&j.choices[0];const m=(ch&&ch.message)||{};
+  a.text=typeof m.content==='string'?m.content:(Array.isArray(m.content)?m.content.map(p=>p.text||'').join(''):'');
+  a.thinking=m.reasoning_content||(typeof m.reasoning==='string'?m.reasoning:'')||'';
+  a._tc=(m.tool_calls||[]).map(tc=>({id:tc.id,name:tc.function&&tc.function.name,argsRaw:(tc.function&&tc.function.arguments)||''}));
+  syncOpenAI(a);
+  if(j.usage)a.usage={in:j.usage.prompt_tokens||0,out:j.usage.completion_tokens||0};
+  a.finish=ch&&ch.finish_reason;
+}
+/* Anthropic */
+function syncAnthropic(a){
+  const bl=(a.anthropicBlocks||[]).filter(Boolean);
+  a.text=bl.filter(b=>b.type==='text').map(b=>b.text).join('');
+  a.thinking=bl.filter(b=>b.type==='thinking').map(b=>b.thinking).join('\n\n');
+  a.toolCalls=bl.filter(b=>b.type==='tool_use').map(b=>({id:b.id,name:b.name,args:b.input||{},argsRaw:JSON.stringify(b.input||{}),status:'pending'}));
+}
+function eventAnthropic(j,a){
+  switch(j.type){
+    case 'message_start':a.usage={in:(j.message&&j.message.usage&&j.message.usage.input_tokens)||0,out:(j.message&&j.message.usage&&j.message.usage.output_tokens)||0};break;
+    case 'content_block_start':{
+      const b=Object.assign({},j.content_block);
+      if(b.type==='text')b.text=b.text||'';
+      if(b.type==='thinking'){b.thinking=b.thinking||'';b.signature=b.signature||''}
+      if(b.type==='tool_use'||b.type==='server_tool_use')b._json='';
+      a.anthropicBlocks[j.index]=b;break;
+    }
+    case 'content_block_delta':{
+      const b=a.anthropicBlocks[j.index];if(!b)break;const d=j.delta||{};
+      if(d.type==='text_delta')b.text+=d.text;
+      else if(d.type==='thinking_delta')b.thinking+=d.thinking;
+      else if(d.type==='signature_delta')b.signature=d.signature;
+      else if(d.type==='input_json_delta')b._json=(b._json||'')+d.partial_json;
+      else if(d.type==='citations_delta')(b.citations=b.citations||[]).push(d.citation);
+      break;
+    }
+    case 'content_block_stop':{
+      const b=a.anthropicBlocks[j.index];
+      if(b&&'_json' in b){try{b.input=b._json?JSON.parse(b._json):{}}catch(e){b.input={}}delete b._json}
+      break;
+    }
+    case 'message_delta':
+      if(j.usage&&j.usage.output_tokens!=null)a.usage=Object.assign({in:0},a.usage,{out:j.usage.output_tokens});
+      if(j.delta&&j.delta.stop_reason)a.finish=j.delta.stop_reason;break;
+    case 'error':throw new Error((j.error&&j.error.message)||'스트림 오류');
+  }
+}
+async function streamAnthropic(resp,a){
+  a.anthropicBlocks=[];
+  for await(const ev of sse(resp)){
+    let j;try{j=JSON.parse(ev.data)}catch(e){continue}
+    eventAnthropic(j,a);syncAnthropic(a);sched(a);
+  }
+  a.anthropicBlocks=a.anthropicBlocks.filter(Boolean).map(b=>{delete b._json;return b});
+  syncAnthropic(a);
+}
+function fullAnthropic(j,a){
+  if(j.type==='error'||j.error)throw new Error((j.error&&j.error.message)||'오류');
+  a.anthropicBlocks=j.content||[];syncAnthropic(a);
+  if(j.usage)a.usage={in:j.usage.input_tokens||0,out:j.usage.output_tokens||0};
+  a.finish=j.stop_reason;
+}
+/* Gemini */
+function syncGemini(a){
+  const p=a.geminiParts||[];
+  a.text=p.filter(x=>typeof x.text==='string'&&!x.thought).map(x=>x.text).join('');
+  a.thinking=p.filter(x=>typeof x.text==='string'&&x.thought).map(x=>x.text).join('');
+  a.toolCalls=p.filter(x=>x.functionCall).map((x,i)=>({id:'call_'+a.id+'_'+i,name:x.functionCall.name,args:x.functionCall.args||{},argsRaw:JSON.stringify(x.functionCall.args||{}),status:'pending'}));
+}
+function chunkGemini(j,a){
+  if(j.error)throw new Error(j.error.message||JSON.stringify(j.error));
+  if(j.promptFeedback&&j.promptFeedback.blockReason)throw new Error('요청이 차단되었습니다: '+j.promptFeedback.blockReason);
+  const c=j.candidates&&j.candidates[0];
+  if(c&&c.content&&c.content.parts)for(const p of c.content.parts)a.geminiParts.push(p);
+  if(c&&c.finishReason)a.finish=c.finishReason;
+  if(j.usageMetadata)a.usage={in:j.usageMetadata.promptTokenCount||0,out:(j.usageMetadata.candidatesTokenCount||0)+(j.usageMetadata.thoughtsTokenCount||0)};
+  syncGemini(a);
+}
+async function streamGemini(resp,a){
+  a.geminiParts=[];
+  for await(const ev of sse(resp)){
+    let j;try{j=JSON.parse(ev.data)}catch(e){continue}
+    chunkGemini(j,a);sched(a);
+  }
+}
+function fullGemini(j,a){a.geminiParts=[];chunkGemini(j,a)}
+const STREAM={openai:streamOpenAI,anthropic:streamAnthropic,gemini:streamGemini};
+const FULL={openai:fullOpenAI,anthropic:fullAnthropic,gemini:fullGemini};
+
+/* ================= 도구 ================= */
+const TOOLS=[
+  {key:'tTime',name:'get_current_time',description:'현재 날짜와 시각을 반환합니다.',
+   parameters:{type:'object',properties:{timezone:{type:'string',description:'IANA 시간대 이름. 예: Asia/Seoul. 생략하면 사용자의 시간대'}}},
+   run:async a=>{
+     const tz=(a&&a.timezone)||Intl.DateTimeFormat().resolvedOptions().timeZone;const d=new Date();
+     return JSON.stringify({iso:d.toISOString(),timezone:tz,local:new Intl.DateTimeFormat('ko-KR',{dateStyle:'full',timeStyle:'long',timeZone:tz}).format(d)});
+   }},
+  {key:'tCalc',name:'calculate',description:'수식을 계산합니다. 사칙제곱, 거듭제곱(^), 괄호, sqrt sin cos tan log exp abs pow min max round floor ceil, pi를 쓸 수 있습니다.',
+   parameters:{type:'object',properties:{expression:{type:'string',description:'계산할 수식. 예: (12.5*4)+sqrt(81)'}},required:['expression']},
+   run:async a=>{
+     const fn='sqrt|sin|cos|tan|asin|acos|atan|log10|log2|log|exp|abs|pow|min|max|round|floor|ceil';
+     const src=String((a&&a.expression)||'').replace(/\^/g,'**');
+     if(!src.trim())throw new Error('수식이 비어 있습니다.');
+     const rest=src.replace(new RegExp('\\b('+fn+')\\b','g'),'').replace(/\bpi\b/gi,'');
+     if(!/^[\d\s+\-*/%.,()]*$/.test(rest))throw new Error('허용되지 않는 문자가 있습니다.');
+     const code=src.replace(new RegExp('\\b('+fn+')\\b','g'),'Math.$1').replace(/\bpi\b/gi,'Math.PI');
+     const v=Function('"use strict";return ('+code+')')();
+     if(typeof v!=='number'||!isFinite(v))throw new Error('계산 결과가 유한한 숫자가 아닙니다.');
+     return String(v);
+   }},
+  {key:'tFetch',name:'fetch_url',description:'웹 페이지나 API 주소의 텍스트 내용을 가져옵니다(최대 8000자). CORS를 허용하는 주소만 가능합니다.',
+   parameters:{type:'object',properties:{url:{type:'string',description:'https:// 로 시작하는 주소'}},required:['url']},
+   run:async a=>{
+     const r=await fetch(a.url);const t=await r.text();
+     return 'HTTP '+r.status+'\n'+t.slice(0,8000);
+   }}
+];
+
+/* ================= 대화 상태 ================= */
+let convs=[],cur=null,busy=false,abortCtl=null,pending=[];
+const newConvObj=()=>({id:uid(),title:'새 대화',created:Date.now(),updated:Date.now(),messages:[]});
+const makeTitle=t=>(String(t||'').replace(/\s+/g,' ').trim().slice(0,36))||'새 대화';
+let saveT;
+function persist(c){
+  if(memOnly||!c||!c.messages.length)return;
+  clearTimeout(saveT);
+  saveT=setTimeout(()=>{
+    try{const clean=JSON.parse(JSON.stringify(c,(k,v)=>(k&&k[0]==='_')?undefined:v));DB.put(clean).catch(()=>{memOnly=true})}catch(e){}
+  },250);
+}
+function selectConv(id){
+  const c=convs.find(x=>x.id===id);if(!c)return;
+  if(busy&&abortCtl)abortCtl.abort();
+  cur=c;LS.set('aichat.cur',c.id);pending=[];renderChips();renderList();renderAll();app.classList.remove('side-open');
+}
+function newChat(){
+  if(busy&&abortCtl)abortCtl.abort();
+  if(cur&&!cur.messages.length){renderAll();app.classList.remove('side-open');$('#input').focus();return}
+  const c=newConvObj();convs.unshift(c);cur=c;pending=[];renderChips();renderList();renderAll();
+  app.classList.remove('side-open');$('#input').focus();
+}
+function deleteConv(id){
+  convs=convs.filter(c=>c.id!==id);
+  if(!memOnly)DB.del(id).catch(()=>{});
+  if(cur&&cur.id===id){cur=convs.find(c=>c.messages.length)||null;if(!cur){cur=newConvObj();convs.unshift(cur)}LS.set('aichat.cur',cur.id)}
+  renderList();renderAll();
+}
+function renderList(){
+  const q=$('#convSearch').value.trim().toLowerCase();
+  const items=convs.filter(c=>(c.messages.length||c===cur)&&(!q||c.title.toLowerCase().includes(q)||c.messages.some(m=>m.text&&m.text.toLowerCase().includes(q)))).sort((a,b)=>b.updated-a.updated);
+  $('#convList').innerHTML=items.length?items.map(c=>`<div class="conv${c===cur?' active':''}" data-id="${c.id}" role="button" tabindex="0"><span class="ct">${esc(c.title)}</span><button class="conv-del" data-del="${c.id}" aria-label="대화 삭제" title="삭제">삭제</button></div>`).join(''):'<div class="empty-list">대화가 없습니다.</div>';
+  $('#convTitle').textContent=cur?cur.title:'새 대화';
+  document.title=(cur&&cur.messages.length?cur.title+' · ':'')+'AI 채팅 콘솔';
+}
+$('#convList').addEventListener('click',e=>{
+  const del=e.target.closest('[data-del]');
+  if(del){
+    e.stopPropagation();
+    if(del.classList.contains('confirm')){deleteConv(del.dataset.del)}
+    else{del.classList.add('confirm');del.textContent='정말?';setTimeout(()=>{if(del.isConnected){del.classList.remove('confirm');del.textContent='삭제'}},2500)}
+    return;
+  }
+  const it=e.target.closest('.conv');if(it)selectConv(it.dataset.id);
+});
+$('#convList').addEventListener('keydown',e=>{if(e.key==='Enter'){const it=e.target.closest('.conv');if(it&&e.target===it)selectConv(it.dataset.id)}});
+$('#convSearch').addEventListener('input',renderList);
+$('#newChat').addEventListener('click',newChat);
+
+/* ================= 렌더링 ================= */
+const msgsEl=$('#msgs'),chatEl=$('#chat');
+let stick=true;
+chatEl.addEventListener('scroll',()=>{stick=chatEl.scrollHeight-chatEl.scrollTop-chatEl.clientHeight<90});
+const scrollDown=()=>{if(stick)chatEl.scrollTop=chatEl.scrollHeight};
+const actBtn=(icon,label,act)=>`<button class="act" type="button" data-act="${act}" title="${label}" aria-label="${label}">${ic(icon,15)}</button>`;
+function usageLine(m){
+  const p=[];
+  if(m.usage&&(m.usage.in||m.usage.out))p.push(`${m.usage.in} → ${m.usage.out} 토큰`);
+  if(m.ms)p.push((m.ms/1000).toFixed(1)+'초');
+  return p.join(' · ');
+}
+function welcomeHTML(){
+  return `<div class="welcome"><h1>AI와 대화하기</h1>
+  <p class="lead">엔드포인트와 API 키를 입력하면 바로 대화할 수 있습니다. 스트리밍, 이미지·PDF 첨부, 시스템 프롬프트, 도구 호출, 생각 과정 표시를 지원합니다.</p>
+  <ol class="steps"><li><b>서비스 선택</b><span>아래에서 고르거나 설정에서 주소를 직접 입력합니다.</span></li><li><b>API 키 입력</b><span>키는 입력한 엔드포인트로만 전송됩니다.</span></li><li><b>모델을 고르고 대화</b><span>‘모델 불러오기’로 사용할 수 있는 모델을 확인합니다.</span></li></ol>
+  <div class="presets">${PRESETS.map((p,i)=>`<button class="chip-btn" type="button" data-preset="${i}">${esc(p.name)}</button>`).join('')}</div>
+  <button class="btn primary" type="button" data-act="open-settings">설정 열기</button></div>`;
+}
+function msgHTML(m){
+  if(m.role==='user'){
+    if(m._editing)return `<article class="msg user editing" data-id="${m.id}"><textarea class="edit-ta" aria-label="메시지 편집">${esc(m.text)}</textarea><div class="edit-actions"><button class="btn" type="button" data-act="cancel-edit">취소</button><button class="btn primary" type="button" data-act="save-edit">저장하고 다시 생성</button></div></article>`;
+    const att=(m.attachments||[]).map(a=>a.kind==='image'?`<img class="att-img" src="data:${a.mime};base64,${a.data}" alt="${esc(a.name)}">`:`<span class="att-file">${ic('clip',14)}${esc(a.name)}</span>`).join('');
+    return `<article class="msg user" data-id="${m.id}">${att?`<div class="atts">${att}</div>`:''}${m.text?`<div class="bubble">${esc(m.text)}</div>`:''}<div class="actions">${actBtn('edit','편집','edit')}${actBtn('copy','복사','copy')}${actBtn('trash','삭제','del')}</div></article>`;
+  }
+  if(m.role!=='assistant')return '';
+  const tcs=m.toolCalls||[];
+  const think=m.thinking?`<details class="think" data-k="think"${m._thinkOpen?' open':''}><summary>${(m._streaming&&!m.text&&!tcs.length)?'생각 중…':'생각 과정'}</summary><div class="think-body">${esc(m.thinking)}</div></details>`:'';
+  const meta=`<div class="meta"><span>${esc(m.model||'')}</span><span>${esc(usageLine(m))}</span></div>`;
+  if(m._editing){
+    return `<article class="msg ai editing" data-id="${m.id}">${meta}${think}<textarea class="edit-ta" aria-label="AI 답변 편집">${esc(m.text||'')}</textarea><div class="edit-actions"><button class="btn" type="button" data-act="cancel-edit">취소</button><button class="btn primary" type="button" data-act="save-edit">저장</button></div></article>`;
+  }
+  const body=m.text?`<div class="md">${md(m.text)}</div>`:((m._streaming&&!m.thinking&&!tcs.length)?'<div class="typing"><i></i><i></i><i></i></div>':'');
+  const stat={pending:'대기',running:'실행 중',done:'완료',error:'오류'};
+  const tools=tcs.map(tc=>`<details class="tool" data-k="tool" data-tc="${esc(tc.id)}"${tc._open?' open':''}><summary><span class="tname">${esc(tc.name)}</span><span class="tstat ${tc.status||''}">${stat[tc.status]||''}</span></summary><div class="tbody"><div class="tl">인자</div><pre>${esc(JSON.stringify(tc.args||{},null,2))}</pre>${tc.result!==undefined?`<div class="tl">결과</div><pre>${esc(tc.result)}</pre>`:''}</div></details>`).join('');
+  const err=m.error?`<div class="err">${esc(m.error)}</div>`:'';
+  const notes=[];
+  if(m.stopped)notes.push('응답을 중단했습니다.');
+  if(m.note)notes.push(m.note);
+  if(/^(length|max_tokens|MAX_TOKENS)$/.test(m.finish||''))notes.push('최대 토큰에 도달해 응답이 잘렸습니다. 설정에서 최대 출력 토큰을 늘려 보세요.');
+  if(!m._streaming&&!m.text&&!tcs.length&&!m.error&&!m.stopped)notes.push('빈 응답이 돌아왔습니다.'+(m.finish?' (종료 사유: '+m.finish+')':''));
+  const note=notes.map(n=>`<div class="note">${esc(n)}</div>`).join('');
+  const acts=m._streaming?'':`<div class="actions">${actBtn('edit','편집','edit')}${actBtn('copy','복사','copy')}${actBtn('refresh','다시 생성','regen')}${actBtn('speaker','소리 내어 읽기','speak')}${actBtn('trash','삭제','del')}</div>`;
+  return `<article class="msg ai" data-id="${m.id}">${meta}${think}${body}${tools}${err}${note}${acts}</article>`;
+}
+function renderAll(){
+  stick=true;
+  const vis=cur?cur.messages.filter(m=>m.role!=='tool'):[];
+  msgsEl.innerHTML=vis.length?vis.map(msgHTML).join(''):welcomeHTML();
+  $('#convTitle').textContent=cur?cur.title:'새 대화';
+  chatEl.scrollTop=chatEl.scrollHeight;
+  updateSend();
+}
+function renderOne(m){
+  if(!cur||!cur.messages.includes(m))return;
+  const html=msgHTML(m);if(!html)return;
+  const el=msgsEl.querySelector(`[data-id="${m.id}"]`);
+  if(!el){
+    const w=msgsEl.querySelector('.welcome');if(w)w.remove();
+    msgsEl.insertAdjacentHTML('beforeend',html);
+  }else{
+    const t=document.createElement('template');t.innerHTML=html;el.replaceWith(t.content.firstElementChild);
+  }
+  scrollDown();
+}
+let schedM=null,raf=0;
+function sched(m){
+  schedM=m;
+  if(!raf)raf=requestAnimationFrame(()=>{raf=0;if(schedM)renderOne(schedM)});
+}
+msgsEl.addEventListener('toggle',e=>{
+  const d=e.target;if(!d.dataset||!d.dataset.k)return;
+  const el=d.closest('.msg');const m=el&&cur&&cur.messages.find(x=>x.id===el.dataset.id);if(!m)return;
+  if(d.dataset.k==='think')m._thinkOpen=d.open;
+  else{const tc=(m.toolCalls||[]).find(t=>t.id===d.dataset.tc);if(tc)tc._open=d.open}
+},true);
+
+/* ================= 모델 목록 ================= */
+function friendlyErr(e){
+  if(e&&e.name==='AbortError')return '중단되었습니다.';
+  if(e instanceof TypeError)return '연결할 수 없습니다. 주소, 인터넷 연결, 서버의 CORS 허용 여부를 확인하세요. 로컬 서버는 실행 중인지도 확인하세요.';
+  return (e&&e.message)||String(e);
+}
+async function loadModels(){
+  const st=$('#s-status');
+  if(!S.base.trim()){st.className='status err';st.textContent='엔드포인트 주소를 먼저 입력하세요.';return}
+  st.className='status';st.textContent='불러오는 중…';
+  try{
+    const r=await fetch(proxied(listUrl(S)),{headers:headersFor(S,'GET')});
+    if(!r.ok)throw new Error('HTTP '+r.status+' — '+errText(await r.text()));
+    const j=await r.json();let ids;
+    if(S.provider==='gemini')ids=(j.models||[]).filter(m=>!m.supportedGenerationMethods||m.supportedGenerationMethods.includes('generateContent')).map(m=>String(m.name).replace(/^models\//,''));
+    else ids=(j.data||j.models||[]).map(m=>m.id||m.name||m.model).filter(Boolean);
+    ids.sort();
+    $('#s-models').innerHTML=ids.map(i=>`<option value="${esc(i)}"></option>`).join('');
+    st.className='status ok';st.textContent=`연결됨 · 모델 ${ids.length}개. 모델 입력칸을 눌러 고르세요.`;
+    setConn('ok');
+    if(!S.model){$('#s-model').focus()}
+  }catch(e){
+    st.className='status err';st.textContent=friendlyErr(e);setConn('err','연결 실패');
+  }
+}
+
+/* ================= 생성 ================= */
+function updateSend(){
+  const b=$('#sendBtn');
+  b.innerHTML=busy?ic('stop',18):ic('send',18);
+  b.setAttribute('aria-label',busy?'중단':'전송');
+  b.disabled=false;
+}
+function readyCheck(){
+  if(!S.base.trim()||!S.model.trim()){
+    openSettings(true);toast('엔드포인트 주소와 모델 이름을 입력하세요.');
+    setTimeout(()=>(S.base.trim()?$('#s-model'):$('#s-base')).focus(),60);return false;
+  }
+  return true;
+}
+async function generate(conv){
+  busy=true;abortCtl=new AbortController();updateSend();
+  const signal=abortCtl.signal;let a=null,rounds=0;
+  try{
+    while(true){
+      a={id:uid(),role:'assistant',text:'',thinking:'',toolCalls:[],model:S.model,_streaming:true};
+      const t0=Date.now();
+      conv.messages.push(a);renderOne(a);
+      const hist=cleanHistory(conv.messages.slice(0,conv.messages.indexOf(a)));
+      const tools=TOOLS.filter(t=>S[t.key]);
+      const req=BUILD[S.provider](S,hist,tools);
+      let extra={};
+      if(S.body.trim()){try{extra=JSON.parse(S.body)}catch(e){throw new Error('추가 요청 본문이 올바른 JSON이 아닙니다.')}}
+      for(const k of Object.keys(extra)){if(extra[k]===null)delete req.body[k];else req.body[k]=extra[k]}
+      const resp=await fetch(proxied(req.url),{method:'POST',headers:headersFor(S,'POST'),body:JSON.stringify(req.body),signal});
+      if(!resp.ok)throw new Error('HTTP '+resp.status+' — '+errText(await resp.text()));
+      const ct=resp.headers.get('content-type')||'';
+      if(req.body.stream!==false&&resp.body&&!/json/.test(ct.replace('event-stream','')))await STREAM[S.provider](resp,a);
+      else FULL[S.provider](await resp.json(),a);
+      a.ms=Date.now()-t0;a._streaming=false;delete a._tc;
+      setConn('ok');
+      if(a.toolCalls.length&&!signal.aborted){
+        renderOne(a);
+        const results=[];
+        for(const tc of a.toolCalls){
+          if(signal.aborted)break;
+          tc.status='running';renderOne(a);
+          const tool=TOOLS.find(t=>t.name===tc.name);
+          try{
+            if(!tool)throw new Error('알 수 없는 도구입니다: '+tc.name);
+            tc.result=String(await tool.run(tc.args||{}));tc.status='done';
+          }catch(e){tc.result='오류: '+((e&&e.message)||e);tc.status='error';tc.isError=true}
+          results.push({id:tc.id,name:tc.name,content:tc.result,isError:!!tc.isError});
+          renderOne(a);
+        }
+        if(signal.aborted){a.stopped=true;break}
+        conv.messages.push({id:uid(),role:'tool',results});
+        if(++rounds>=8){a.note='도구 호출 횟수 제한(8회)에 도달했습니다.';break}
+        continue;
+      }
+      break;
+    }
+  }catch(e){
+    if(a){
+      a._streaming=false;delete a._tc;a.ms=a.ms||0;
+      if(e&&e.name==='AbortError'||signal.aborted)a.stopped=true;
+      else{a.error=friendlyErr(e);setConn('err','오류')}
+    }
+  }finally{
+    busy=false;abortCtl=null;
+    if(a){a._streaming=false;renderOne(a)}
+    conv.updated=Date.now();persist(conv);
+    if(cur===conv){renderList();updateSend()}else updateSend();
+  }
+}
+function send(){
+  if(busy){if(abortCtl)abortCtl.abort();return}
+  const ta=$('#input');const text=ta.value.trim();
+  if(!text&&!pending.length)return;
+  if(!readyCheck())return;
+  if(!cur){cur=newConvObj();convs.unshift(cur)}
+  const m={id:uid(),role:'user',text,attachments:pending.slice()};
+  cur.messages.push(m);
+  if(cur.title==='새 대화')cur.title=makeTitle(text||(pending[0]&&pending[0].name));
+  cur.updated=Date.now();LS.set('aichat.cur',cur.id);
+  pending=[];ta.value='';autosize();renderChips();
+  stick=true;renderAll();renderList();persist(cur);
+  generate(cur);
+}
+function regenerate(m){
+  if(busy)return toast('응답을 생성하는 중입니다.');
+  if(!readyCheck())return;
+  let i=cur.messages.indexOf(m);
+  while(i>=0&&cur.messages[i].role!=='user')i--;
+  if(i<0)return;
+  cur.messages.length=i+1;
+  stick=true;renderAll();generate(cur);
+}
+function removeMsg(m){
+  if(busy)return toast('응답을 생성하는 중에는 삭제할 수 없습니다.');
+  const i=cur.messages.indexOf(m);if(i<0)return;
+  let n=1;
+  if(m.role==='assistant'&&m.toolCalls&&m.toolCalls.length&&cur.messages[i+1]&&cur.messages[i+1].role==='tool')n=2;
+  cur.messages.splice(i,n);
+  persist(cur);
+  if(!cur.messages.length&&!memOnly)DB.del(cur.id).catch(()=>{});
+  renderAll();renderList();
+}
+async function copyText(t){
+  try{await navigator.clipboard.writeText(t)}
+  catch(e){const ta=document.createElement('textarea');ta.value=t;ta.style.position='fixed';ta.style.opacity='0';document.body.appendChild(ta);ta.select();try{document.execCommand('copy')}catch(_){}ta.remove()}
+  toast('복사했습니다.');
+}
+function speak(m){
+  if(!('speechSynthesis' in window))return toast('이 브라우저는 음성 읽기를 지원하지 않습니다.');
+  if(speechSynthesis.speaking){speechSynthesis.cancel();return}
+  const t=(m.text||'').replace(/```[\s\S]*?```/g,' 코드 블록 ').replace(/[*_`#>|]/g,'');
+  const u=new SpeechSynthesisUtterance(t);u.lang=/[가-힣]/.test(t)?'ko-KR':'en-US';speechSynthesis.speak(u);
+}
+function saveEdit(el,m){
+  const ta=el.querySelector('.edit-ta');
+  if(!ta)return;
+  if(m.role==='user'){
+    const v=ta.value.trim();
+    if(!v&&!(m.attachments||[]).length)return;
+    if(!readyCheck())return;
+    m.text=v;m._editing=false;
+    cur.messages.length=cur.messages.indexOf(m)+1;
+    stick=true;renderAll();persist(cur);generate(cur);
+  }else if(m.role==='assistant'){
+    const v=ta.value.replace(/\s+$/,'');
+    if(!v&&!(m.toolCalls&&m.toolCalls.length)){
+      toast('내용을 입력하거나 메시지를 삭제해 주세요.');
+      return;
+    }
+    m.text=v;
+    m._editing=false;
+    if(m.error&&v.trim())delete m.error;
+    // Anthropic / Gemini 프로바이더용 원본 블록 구조에도 수정된 텍스트 동기화
+    if(Array.isArray(m.anthropicBlocks)){
+      const kept=m.anthropicBlocks.filter(b=>b&&b.type!=='text');
+      if(v)kept.push({type:'text',text:v});
+      m.anthropicBlocks=kept.length?kept:null;
+    }
+    if(Array.isArray(m.geminiParts)){
+      const kept=m.geminiParts.filter(p=>p&&(typeof p.text!=='string'||p.thought));
+      if(v)kept.push({text:v});
+      m.geminiParts=kept.length?kept:null;
+    }
+    cur.updated=Date.now();
+    renderOne(m);persist(cur);
+    toast('답변을 수정했습니다.');
+  }
+}
+msgsEl.addEventListener('click',e=>{
+  const cc=e.target.closest('.copy-code');
+  if(cc){const pre=cc.closest('.code').querySelector('pre');copyText(pre.textContent);return}
+  const pb=e.target.closest('[data-preset]');if(pb){applyPreset(+pb.dataset.preset);return}
+  const b=e.target.closest('[data-act]');if(!b)return;
+  if(b.dataset.act==='open-settings'){openSettings(true);return}
+  const el=b.closest('.msg');const m=el&&cur&&cur.messages.find(x=>x.id===el.dataset.id);if(!m)return;
+  switch(b.dataset.act){
+    case 'copy':copyText(m.text||'');break;
+    case 'del':removeMsg(m);break;
+    case 'regen':regenerate(m);break;
+    case 'speak':speak(m);break;
+    case 'edit':{
+      if(busy)return toast('응답을 생성하는 중입니다.');
+      m._editing=true;renderOne(m);
+      const ta=msgsEl.querySelector(`[data-id="${m.id}"] .edit-ta`);
+      if(ta){
+        const minH=m.role==='assistant'?140:90;
+        ta.style.height=Math.min(Math.max(ta.scrollHeight+4,minH),480)+'px';
+        ta.focus();
+        ta.setSelectionRange(ta.value.length,ta.value.length);
+      }
+      break;
+    }
+    case 'cancel-edit':m._editing=false;renderOne(m);break;
+    case 'save-edit':saveEdit(el,m);break;
+  }
+});
+msgsEl.addEventListener('keydown',e=>{
+  const ta=e.target.closest('.edit-ta');
+  if(!ta)return;
+  const el=ta.closest('.msg');
+  const m=el&&cur&&cur.messages.find(x=>x.id===el.dataset.id);
+  if(!m)return;
+  if(e.key==='Escape'){
+    e.preventDefault();
+    m._editing=false;renderOne(m);
+  }else if(e.key==='Enter'&&(e.ctrlKey||e.metaKey)){
+    e.preventDefault();
+    saveEdit(el,m);
+  }
+});
+document.addEventListener('click',e=>{
+  const pb=e.target.closest('#presetBox [data-preset]');if(pb)applyPreset(+pb.dataset.preset);
+  if(!e.target.closest('.menu-wrap'))$('#exportMenu').hidden=true;
+});
+
+/* ================= 입력창 / 첨부 ================= */
+const inputEl=$('#input');
+function autosize(){inputEl.style.height='auto';inputEl.style.height=Math.min(inputEl.scrollHeight,200)+'px'}
+inputEl.addEventListener('input',autosize);
+const coarse=window.matchMedia&&matchMedia('(pointer:coarse)').matches;
+inputEl.addEventListener('keydown',e=>{
+  if(e.key==='Enter'&&!e.shiftKey&&!e.isComposing&&e.keyCode!==229&&!coarse){e.preventDefault();send()}
+});
+$('#sendBtn').addEventListener('click',send);
+window.addEventListener('keydown',e=>{if(e.key==='Escape'&&busy&&abortCtl)abortCtl.abort()});
+$('#attachBtn').addEventListener('click',()=>$('#fileInput').click());
+$('#fileInput').addEventListener('change',e=>{addFiles(Array.from(e.target.files));e.target.value=''});
+const readB64=f=>new Promise((res,rej)=>{const r=new FileReader();r.onload=()=>res(String(r.result).split(',')[1]||'');r.onerror=()=>rej(r.error);r.readAsDataURL(f)});
+async function imgData(f){
+  const ok=['image/jpeg','image/png','image/gif','image/webp'].includes(f.type);
+  if(ok&&(f.size<3.5*1024*1024||f.type==='image/gif'))return{mime:f.type,data:await readB64(f)};
+  try{
+    const bmp=await createImageBitmap(f);const sc=Math.min(1,2048/Math.max(bmp.width,bmp.height));
+    const c=document.createElement('canvas');c.width=Math.max(1,Math.round(bmp.width*sc));c.height=Math.max(1,Math.round(bmp.height*sc));
+    c.getContext('2d').drawImage(bmp,0,0,c.width,c.height);
+    const png=f.type==='image/png'||!ok&&f.type!=='image/jpeg';
+    return{mime:png?'image/png':'image/jpeg',data:c.toDataURL(png?'image/png':'image/jpeg',0.88).split(',')[1]};
+  }catch(e){return{mime:f.type,data:await readB64(f)}}
+}
+async function addFiles(files){
+  for(const f of files){
+    try{
+      if(f.type.startsWith('image/')){const d=await imgData(f);pending.push({id:uid(),kind:'image',name:f.name||'이미지',mime:d.mime,data:d.data})}
+      else if(f.type==='application/pdf'||/\.pdf$/i.test(f.name)){
+        if(f.size>30*1024*1024){toast(f.name+': 30MB를 넘는 PDF는 첨부할 수 없습니다.');continue}
+        pending.push({id:uid(),kind:'pdf',name:f.name,mime:'application/pdf',data:await readB64(f)});
+      }
+      else if(f.type.startsWith('text/')||/\.(md|json|csv|js|ts|tsx|jsx|py|html|css|xml|ya?ml|log|sql|sh|java|c|cpp|go|rs|txt)$/i.test(f.name)){
+        pending.push({id:uid(),kind:'text',name:f.name,mime:f.type||'text/plain',data:await f.text()});
+      }else toast(f.name+': 지원하지 않는 파일 형식입니다.');
+    }catch(e){toast(f.name+': 파일을 읽지 못했습니다.')}
+  }
+  renderChips();
+}
+function renderChips(){
+  $('#chips').innerHTML=pending.map(a=>`<span class="chip">${a.kind==='image'?`<img src="data:${a.mime};base64,${a.data}" alt="">`:ic('clip',14)}<span>${esc(a.name)}</span><button type="button" data-rm="${a.id}" aria-label="첨부 제거">×</button></span>`).join('');
+}
+$('#chips').addEventListener('click',e=>{const b=e.target.closest('[data-rm]');if(b){pending=pending.filter(a=>a.id!==b.dataset.rm);renderChips()}});
+inputEl.addEventListener('paste',e=>{
+  const fs=Array.from(e.clipboardData&&e.clipboardData.files||[]);
+  if(fs.length){e.preventDefault();addFiles(fs)}
+});
+let dragN=0;const mainEl=$('#main');
+mainEl.addEventListener('dragenter',e=>{if(e.dataTransfer&&Array.from(e.dataTransfer.types||[]).includes('Files')){dragN++;$('#drop').hidden=false}});
+mainEl.addEventListener('dragleave',()=>{dragN=Math.max(0,dragN-1);if(!dragN)$('#drop').hidden=true});
+mainEl.addEventListener('dragover',e=>e.preventDefault());
+mainEl.addEventListener('drop',e=>{e.preventDefault();dragN=0;$('#drop').hidden=true;addFiles(Array.from(e.dataTransfer.files||[]))});
+
+/* 음성 입력 */
+const SR=window.SpeechRecognition||window.webkitSpeechRecognition;
+let rec=null;
+if(!SR)$('#micBtn').hidden=true;
+$('#micBtn').addEventListener('click',()=>{
+  const b=$('#micBtn');
+  if(rec){rec.stop();return}
+  try{
+    rec=new SR();rec.lang=navigator.language||'ko-KR';rec.interimResults=true;rec.continuous=true;
+    const base=inputEl.value;let fin='';
+    rec.onresult=e=>{
+      let interim='';
+      for(let i=e.resultIndex;i<e.results.length;i++){const r=e.results[i];if(r.isFinal)fin+=r[0].transcript;else interim+=r[0].transcript}
+      inputEl.value=(base?base+' ':'')+fin+interim;autosize();
+    };
+    rec.onend=()=>{rec=null;b.classList.remove('on')};
+    rec.onerror=ev=>{toast('음성 입력 오류: '+ev.error)};
+    rec.start();b.classList.add('on');
+  }catch(e){rec=null;toast('음성 입력을 시작하지 못했습니다.')}
+});
+
+/* ================= 내보내기 / 가져오기 ================= */
+function download(name,text,type){
+  const a=document.createElement('a');a.href=URL.createObjectURL(new Blob([text],{type}));a.download=name;
+  document.body.appendChild(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(a.href),1500);
+}
+$('#exportBtn').addEventListener('click',e=>{e.stopPropagation();$('#exportMenu').hidden=!$('#exportMenu').hidden});
+$('#exportMenu').addEventListener('click',e=>{
+  const b=e.target.closest('[data-exp]');if(!b||!cur||!cur.messages.length){toast('내보낼 대화가 없습니다.');return}
+  $('#exportMenu').hidden=true;
+  const base=(cur.title||'대화').replace(/[\\/:*?"<>|]/g,'_');
+  if(b.dataset.exp==='json')download(base+'.json',JSON.stringify(cur,(k,v)=>(k&&k[0]==='_')?undefined:v,2),'application/json');
+  else{
+    const out=['# '+cur.title,''];
+    for(const m of cur.messages){
+      if(m.role==='user'){out.push('## 사용자','',textOfUser(m),'')}
+      else if(m.role==='assistant'){
+        out.push('## 어시스턴트'+(m.model?' ('+m.model+')':''),'');
+        if(m.text)out.push(m.text,'');
+        for(const tc of m.toolCalls||[])out.push('> 도구 호출: `'+tc.name+'` '+JSON.stringify(tc.args||{}),tc.result!==undefined?'> 결과: '+String(tc.result).replace(/\n/g,' '):'','');
+      }
+    }
+    download(base+'.md',out.join('\n'),'text/markdown');
+  }
+});
+$('#importBtn').addEventListener('click',()=>$('#importFile').click());
+$('#importFile').addEventListener('change',async e=>{
+  const f=e.target.files[0];e.target.value='';if(!f)return;
+  try{
+    const j=JSON.parse(await f.text());const arr=Array.isArray(j)?j:[j];let n=0;
+    for(const c of arr){
+      if(!c||!Array.isArray(c.messages))continue;
+      const nc={id:uid(),title:c.title||'가져온 대화',created:c.created||Date.now(),updated:Date.now(),messages:c.messages};
+      convs.unshift(nc);persist(nc);n++;
+    }
+    if(!n)throw new Error('형식 오류');
+    renderList();toast(n+'개의 대화를 가져왔습니다.');
+  }catch(err){toast('가져오지 못했습니다. 이 앱에서 내보낸 JSON 파일인지 확인하세요.')}
+});
+
+/* ================= 시작 ================= */
+(async function init(){
+  applyTheme(LS.get('aichat.theme','system'));
+  bindSettings();syncUI();updateSend();
+  try{convs=(await DB.all())||[]}catch(e){memOnly=true;convs=[]}
+  convs.sort((a,b)=>b.updated-a.updated);
+  const last=LS.get('aichat.cur',null);
+  cur=convs.find(c=>c.id===last)||convs[0]||null;
+  if(!cur){cur=newConvObj();convs.unshift(cur)}
+  renderList();renderAll();
+})();
+</script>
+</body>
+</html>
