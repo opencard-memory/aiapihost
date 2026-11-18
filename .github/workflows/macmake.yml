@@ -10,7 +10,6 @@ on:
     paths:
       - 'MacOS/AIChatConsole-mac/**'
       - '.github/workflows/macos-build.yml'
-
     tags:
       - 'v*'
 
@@ -23,28 +22,52 @@ jobs:
     runs-on: macos-26
 
     steps:
+      # 1. Download repository
       - name: Checkout Repository
         uses: actions/checkout@v4
 
+      # 2. Pin .NET SDK to version 10
+      - name: Create .NET global.json
+        run: |
+          cat > MacOS/AIChatConsole-mac/global.json <<'EOF'
+          {
+            "sdk": {
+              "version": "10.0.100",
+              "rollForward": "latestFeature",
+              "allowPrerelease": false
+            }
+          }
+          EOF
+
+      # 3. Install the correct SDK
       - name: Setup .NET 10 SDK
         uses: actions/setup-dotnet@v4
         with:
           dotnet-version: '10.0.x'
+          global-json-file: MacOS/AIChatConsole-mac/global.json
 
-      - name: Display Build Environment
+      # 4. Verify environment
+      - name: Verify Build Environment
+        working-directory: MacOS/AIChatConsole-mac
         run: |
-          echo "=== macOS Environment ==="
+          echo "=== macOS Version ==="
           sw_vers
+
           echo "=== Architecture ==="
           uname -m
-          echo "=== .NET SDK ==="
-          dotnet --info
 
+          echo "=== .NET SDK ==="
+          dotnet --version
+
+          dotnet --list-sdks
+
+      # 5. Restore NuGet packages
       - name: Restore Dependencies
         working-directory: MacOS/AIChatConsole-mac
         run: |
           dotnet restore AIChatConsole.csproj
 
+      # 6. Build both architectures
       - name: Build Self-contained Apps
         working-directory: MacOS/AIChatConsole-mac
         run: |
@@ -52,19 +75,25 @@ jobs:
           chmod +x build-self-contained.sh
           ./build.sh
 
+      # 7. Verify generated ZIP files
       - name: Verify Build Outputs
         run: |
           set -e
 
           DIST="MacOS/AIChatConsole-mac/dist-self-contained"
 
-          test -f "$DIST/AIChatConsole-osx-arm64-self-contained.zip"
-          test -f "$DIST/AIChatConsole-osx-x64-self-contained.zip"
+          echo "Checking Apple Silicon build..."
+          test -s "$DIST/AIChatConsole-osx-arm64-self-contained.zip"
 
-          echo "Both macOS packages were generated successfully."
+          echo "Checking Intel build..."
+          test -s "$DIST/AIChatConsole-osx-x64-self-contained.zip"
 
+          echo "=== Generated Files ==="
           ls -lh "$DIST"/*.zip
 
+          echo "Build verification successful!"
+
+      # 8. Upload Apple Silicon artifact
       - name: Upload Apple Silicon Build
         uses: actions/upload-artifact@v4
         with:
@@ -73,6 +102,7 @@ jobs:
           if-no-files-found: error
           retention-days: 30
 
+      # 9. Upload Intel artifact
       - name: Upload Intel Build
         uses: actions/upload-artifact@v4
         with:
@@ -81,6 +111,7 @@ jobs:
           if-no-files-found: error
           retention-days: 30
 
+      # 10. Publish GitHub Release when a version tag is pushed
       - name: Publish GitHub Release
         if: startsWith(github.ref, 'refs/tags/v')
         uses: softprops/action-gh-release@v2
