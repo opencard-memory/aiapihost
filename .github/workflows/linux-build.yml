@@ -6,6 +6,7 @@ on:
     branches: [main]
     paths:
       - 'Linux/**'
+      - 'MacOS/AIChatConsole-mac/**'
       - '.github/workflows/linux-build.yml'
     tags: ['v*']
 
