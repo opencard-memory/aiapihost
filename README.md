@@ -2,7 +2,8 @@
 
 AI를 API로 직접 적어서 쓸수 있는 프로그램 입니다.
 
-웹사이트에서 바로 이용하기 (온디바이스) : https://aiapihost.pages.dev/
+홈페이지로 이동 : https://www.opencard.uk/
+웹사이트에서 바로 이용하기 (온디바이스) : https://chat.opencard.uk/
 
 웹 버전 및 모든 프로그램은 온디바이스로 작동하며, 이 저장소에 빌드 파일도 있습니다.
 
